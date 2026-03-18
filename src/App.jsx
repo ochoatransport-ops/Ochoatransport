@@ -197,9 +197,9 @@ const ESTADOS = { PEDIDO: "Pedido generado", RECOLECTADO: "Recolectado — en ca
 const ESTADO_KEYS = Object.keys(ESTADOS);
 const ESTADO_COLORS = { PEDIDO: { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" }, RECOLECTADO: { bg: "#E0E7FF", text: "#3730A3", dot: "#6366F1" }, BODEGA_TJ: { bg: "#A7F3D0", text: "#065F46", dot: "#34D399" }, ENTREGADO: { bg: "#BBF7D0", text: "#166534", dot: "#22C55E" }, CERRADO: { bg: "#E5E7EB", text: "#374151", dot: "#6B7280" } };
 const ESTADO_RESP = { PEDIDO: "Alejandra", RECOLECTADO: "Jordi", BODEGA_TJ: "Adolfo", ENTREGADO: "Adolfo", CERRADO: "Admin" };
-const DINERO_STATUS = { SIN_FONDOS: "Sin fondos aún", SOBRE_LISTO: "Sobre listo en TJ", DINERO_CAMINO: "Dinero en camino a USA", DINERO_USA: "Dinero recibido en USA", COLCHON_USADO: "Colchón usado (pendiente)", COLCHON_REPUESTO: "Colchón repuesto", FANTASMA_PAGADO: "👻 Fantasma pagado", FLETE_PAGADO: "🚛 Flete pagado", TODO_PAGADO: "✅ Fantasma y flete pagado", NO_APLICA: "Pagado / No aplica" };
+const DINERO_STATUS = { SIN_FONDOS: "Sin fondos aún", SOBRE_LISTO: "Sobre listo en TJ", DINERO_CAMINO: "Dinero en camino a USA", DINERO_USA: "Dinero recibido en USA", COLCHON_USADO: "Colchón usado (pendiente)", COLCHON_REPUESTO: "Colchón repuesto", TRANS_PENDIENTE: "🏦 Transferencia por confirmar", FANTASMA_PAGADO: "👻 Fantasma pagado", FLETE_PAGADO: "🚛 Flete pagado", TODO_PAGADO: "✅ Fantasma y flete pagado", NO_APLICA: "Pagado / No aplica" };
 const DINERO_KEYS = Object.keys(DINERO_STATUS);
-const DINERO_COLORS = { SIN_FONDOS: { bg: "#FEE2E2", text: "#991B1B", dot: "#DC2626" }, SOBRE_LISTO: { bg: "#DBEAFE", text: "#1E40AF", dot: "#3B82F6" }, DINERO_CAMINO: { bg: "#E0E7FF", text: "#3730A3", dot: "#6366F1" }, DINERO_USA: { bg: "#D1FAE5", text: "#065F46", dot: "#10B981" }, COLCHON_USADO: { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" }, COLCHON_REPUESTO: { bg: "#D1FAE5", text: "#065F46", dot: "#059669" }, FANTASMA_PAGADO: { bg: "#FCE7F3", text: "#9D174D", dot: "#EC4899" }, FLETE_PAGADO: { bg: "#DBEAFE", text: "#1E40AF", dot: "#2563EB" }, TODO_PAGADO: { bg: "#D1FAE5", text: "#065F46", dot: "#059669" }, NO_APLICA: { bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" } };
+const DINERO_COLORS = { SIN_FONDOS: { bg: "#FEE2E2", text: "#991B1B", dot: "#DC2626" }, SOBRE_LISTO: { bg: "#DBEAFE", text: "#1E40AF", dot: "#3B82F6" }, DINERO_CAMINO: { bg: "#E0E7FF", text: "#3730A3", dot: "#6366F1" }, DINERO_USA: { bg: "#D1FAE5", text: "#065F46", dot: "#10B981" }, COLCHON_USADO: { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" }, COLCHON_REPUESTO: { bg: "#D1FAE5", text: "#065F46", dot: "#059669" }, TRANS_PENDIENTE: { bg: "#F3E8FF", text: "#6B21A8", dot: "#9333EA" }, FANTASMA_PAGADO: { bg: "#FCE7F3", text: "#9D174D", dot: "#EC4899" }, FLETE_PAGADO: { bg: "#DBEAFE", text: "#1E40AF", dot: "#2563EB" }, TODO_PAGADO: { bg: "#D1FAE5", text: "#065F46", dot: "#059669" }, NO_APLICA: { bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" } };
 
 // Which estados each role sees
 const USA_ESTADOS = ["PEDIDO", "RECOLECTADO", "BODEGA_TJ"];
@@ -323,13 +323,17 @@ const ROLE_NAV = {
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null); // logged-in username
+  const [role, setRole] = useState(() => {
+    try { return localStorage.getItem("ot_role") || null; } catch { return null; }
+  });
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return localStorage.getItem("ot_user") || null; } catch { return null; }
+  });
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [view, setView] = useState("main");
-  const [prevView, setPrevView] = useState("ventas");
+  const [prevView, setPrevView] = useState("main");
   const [selId, setSelId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
@@ -338,7 +342,7 @@ export default function App() {
   const [fPagoMerc, setFPagoMerc] = useState("ALL");
   const [fPagoFlete, setFPagoFlete] = useState("ALL");
   const [confirm, setConfirm] = useState(null);
-  const [detailMode, setDetailMode] = useState("full"); // "full" or "info"
+  const [detailMode, setDetailMode] = useState("full");
   const [usaTab, setUsaTab] = useState("pendientes");
   const [tjTab, setTjTab] = useState("recibir");
   const [pagoTab, setPagoTab] = useState("mercancia");
@@ -348,6 +352,19 @@ export default function App() {
   const [efMoneda, setEfMoneda] = useState("ALL");
   const [efSearch, setEfSearch] = useState("");
   const [efTipo, setEfTipo] = useState("ALL");
+
+  // ── Global dialog system (replaces window.alert / window.confirm) ──
+  const [dialog, setDialog] = useState(null);
+  // dialog = { type: "alert"|"confirm", title, msg, onOk, onCancel }
+  const showAlert = (msg, title = "Aviso") => new Promise(resolve => {
+    setDialog({ type: "alert", title, msg, onOk: () => { setDialog(null); resolve(); } });
+  });
+  const showConfirm = (msg, title = "¿Confirmar?") => new Promise(resolve => {
+    setDialog({ type: "confirm", title, msg,
+      onOk:     () => { setDialog(null); resolve(true);  },
+      onCancel: () => { setDialog(null); resolve(false); },
+    });
+  });
   const [tjTransSearch, setTjTransSearch] = useState("");
   const [adelSearch, setAdelSearch] = useState("");
   const [dashTab2, setDashTab2] = useState("fletes");
@@ -688,17 +705,23 @@ export default function App() {
 
   // ============ LOGIN SCREEN ============
   if (!role) {
-    const handleLogin = () => {
+    const handleLogin = (remember) => {
       const user = USERS.find(u => u.username === loginUser.trim() && u.password === loginPass);
       if (user) {
         setCurrentUser(user.username);
         setRole(user.role);
         setView("home");
         setLoginError("");
+        if (remember) {
+          try { localStorage.setItem("ot_role", user.role); localStorage.setItem("ot_user", user.username); } catch {}
+        } else {
+          try { localStorage.removeItem("ot_role"); localStorage.removeItem("ot_user"); } catch {}
+        }
       } else {
         setLoginError("Usuario o contraseña incorrectos.");
       }
     };
+    const [remember, setRemember] = React.useState(false);
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #1A2744 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", padding: 16 }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -711,14 +734,18 @@ export default function App() {
           <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 28 }}>
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", color: "#94A3B8", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Usuario</label>
-              <input value={loginUser} onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Nombre de usuario" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+              <input value={loginUser} onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin(remember)} placeholder="Nombre de usuario" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", color: "#94A3B8", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Contraseña</label>
-              <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+              <input type="password" value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin(remember)} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
             </div>
             {loginError && <div style={{ background: "rgba(220,38,38,0.2)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 8, padding: "8px 12px", marginBottom: 16, color: "#FCA5A5", fontSize: 12 }}>⚠️ {loginError}</div>}
-            <button onClick={handleLogin} style={{ width: "100%", padding: "11px", borderRadius: 8, border: "none", background: "#1D4ED8", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, cursor: "pointer" }}>
+              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#2563EB", cursor: "pointer" }} />
+              <span style={{ color: "#94A3B8", fontSize: 12 }}>Mantener sesión iniciada</span>
+            </label>
+            <button onClick={() => handleLogin(remember)} style={{ width: "100%", padding: "11px", borderRadius: 8, border: "none", background: "#1D4ED8", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               Entrar →
             </button>
           </div>
@@ -1743,12 +1770,12 @@ export default function App() {
     const [showNewVendedor, setShowNewVendedor] = useState(false);
     const [newName, setNewName] = useState("");
 
-    const addCliente = (name) => {
+    const addCliente = async (name) => {
       if (!name) return;
       const n = name.toUpperCase();
       const existing = data.clientes || [];
       // Exact match — block
-      if (existing.includes(n)) { alert("⚠️ El cliente \"" + n + "\" ya existe."); return; }
+      if (existing.includes(n)) { showAlert("⚠️ El cliente \"" + n + "\" ya existe."); return; }
       // Similar match — warn
       const similar = existing.filter(c => {
         if (c.includes(n) || n.includes(c)) return true;
@@ -1757,19 +1784,19 @@ export default function App() {
         return words.some(w => c.includes(w));
       });
       if (similar.length > 0) {
-        if (!window.confirm(`⚠️ Ya existen clientes con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
+        if (!await showConfirm(`⚠️ Ya existen clientes con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
       }
       persist({ ...data, clientes: [...existing, n] });
       setShowNewCliente(false); setNewName("");
     };
-    const addVendedor = (name) => {
+    const addVendedor = async (name) => {
       if (!name) return;
       const n = name.toUpperCase();
       const existing = data.vendedores || [];
-      if (existing.includes(n)) { alert("⚠️ El vendedor \"" + n + "\" ya existe."); return; }
+      if (existing.includes(n)) { showAlert("⚠️ El vendedor \"" + n + "\" ya existe."); return; }
       const similar = existing.filter(v => v.includes(n) || n.includes(v) || n.split(" ").filter(w => w.length > 2).some(w => v.includes(w)));
       if (similar.length > 0) {
-        if (!window.confirm(`⚠️ Ya existen vendedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
+        if (!await showConfirm(`⚠️ Ya existen vendedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
       }
       persist({ ...data, vendedores: [...existing, n] });
       setShowNewVendedor(false); setNewName("");
@@ -1874,13 +1901,18 @@ export default function App() {
 
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Clientes & Vendedores</h2>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <div style={{ position: "relative", flex: "1 1 300px", maxWidth: 500 }}><span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 16 }}><I.Search /></span><input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Buscar cliente..." autoComplete="off" style={{ width: "100%", padding: "10px 14px 10px 38px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff", transition: "border-color .2s" }} onFocus={e => e.target.style.borderColor="#2563EB"} onBlur={e => e.target.style.borderColor="#E5E7EB"} />{cSearch && <button onClick={() => setCSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, fontFamily: "inherit" }}>✕</button>}</div>
+          <div style={{ display: "flex", gap: 6 }}>
             <Btn sz="sm" onClick={() => { setShowNewCliente(true); setNewName(""); }}><I.Plus /> Cliente</Btn>
             <Btn sz="sm" v="secondary" onClick={() => { setShowNewVendedor(true); setNewName(""); }}><I.Plus /> Vendedor</Btn>
           </div>
+        </div>
+        {/* Search bar — full width */}
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 18 }}><I.Search /></span>
+          <input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Buscar cliente o vendedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.style.borderColor = "#2563EB"} onBlur={e => e.target.style.borderColor = "#E5E7EB"} />
+          {cSearch && <button onClick={() => setCSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, fontFamily: "inherit" }}>✕</button>}
         </div>
 
         {/* Filters and Sort */}
@@ -2018,7 +2050,7 @@ export default function App() {
                     <div style={{ padding: "12px 18px", display: "flex", gap: 8 }}>
                       <Btn v="primary" onClick={(e) => { e.stopPropagation(); openPago(c.n); }} style={{ flex: 1, justifyContent: "center" }}>+ Registrar pago</Btn>
                       <Btn v="secondary" sz="sm" onClick={(e) => { e.stopPropagation(); const nn = c.n; if (nn && nn.trim()) { const upper = nn.trim().toUpperCase(); const newClientes = (data.clientes || []).map(x => x === c.n ? upper : x); const newFantasmas = data.fantasmas.map(f => f.cliente === c.n ? { ...f, cliente: upper } : f); persist({ ...data, clientes: newClientes, fantasmas: newFantasmas }); } }}><I.Edit /></Btn>
-                      <Btn v="danger" sz="sm" onClick={(e) => { e.stopPropagation(); if (c.p.length > 0) { alert("No se puede eliminar un cliente con pedidos."); } else deleteCliente(c.n); }}><I.Trash /></Btn>
+                      <Btn v="danger" sz="sm" onClick={async (e) => { e.stopPropagation(); if (c.p.length > 0) { await showAlert("No se puede eliminar un cliente con pedidos."); } else deleteCliente(c.n); }}><I.Trash /></Btn>
                     </div>
                   </div>
                 )}
@@ -2187,12 +2219,12 @@ export default function App() {
 
     const provInfo = data.proveedoresInfo || {}; // { provName: { ubicacion, telefono, contacto } }
 
-    const saveProv = (old, form) => {
+    const saveProv = async (old, form) => {
       const nombre = form.nombre.toUpperCase();
       const provList = Object.keys(data.proveedoresInfo || {});
       // Exact match — block
-      if (!old && provList.includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
-      if (old && old !== nombre && provList.includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
+      if (!old && provList.includes(nombre)) { showAlert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
+      if (old && old !== nombre && provList.includes(nombre)) { showAlert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
       // Similar match — warn (only when adding new)
       if (!old) {
         const similar = provList.filter(p => {
@@ -2201,7 +2233,7 @@ export default function App() {
           return words.some(w => p.includes(w));
         });
         if (similar.length > 0) {
-          if (!window.confirm(`⚠️ Ya existen proveedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${nombre}"?`)) return;
+          if (!await showConfirm(`⚠️ Ya existen proveedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${nombre}"?`)) return;
         }
       }
       const contacto = (form.contacto || "").toUpperCase();
@@ -2264,12 +2296,15 @@ export default function App() {
 
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Proveedores</h2>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <div style={{ position: "relative", flex: "1 1 300px", maxWidth: 500 }}><span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 16 }}><I.Search /></span><input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Buscar proveedor..." autoComplete="off" style={{ width: "100%", padding: "10px 14px 10px 38px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff", transition: "border-color .2s" }} onFocus={e => e.target.style.borderColor="#2563EB"} onBlur={e => e.target.style.borderColor="#E5E7EB"} />{pSearch && <button onClick={() => setPSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, fontFamily: "inherit" }}>✕</button>}</div>
-            <Btn onClick={() => { setShowNewProv(true); setProvForm({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" }); }}><I.Plus /> Nuevo Proveedor</Btn>
-          </div>
+          <Btn onClick={() => { setShowNewProv(true); setProvForm({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" }); }}><I.Plus /> Nuevo Proveedor</Btn>
+        </div>
+        {/* Search bar — full width */}
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 18 }}><I.Search /></span>
+          <input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Buscar proveedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.style.borderColor = "#2563EB"} onBlur={e => e.target.style.borderColor = "#E5E7EB"} />
+          {pSearch && <button onClick={() => setPSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, fontFamily: "inherit" }}>✕</button>}
         </div>
         {/* Filters and Sort */}
         <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
@@ -3113,12 +3148,12 @@ export default function App() {
     };
 
     const colchonSaldo = (data.colchon || {}).saldoActual || 0;
-    const marcarColchon = () => {
+    const marcarColchon = async () => {
       const ids = Object.keys(selSobres).filter(k => selSobres[k]);
       if (ids.length === 0) return;
       const totalNeeded = ids.reduce((s, id) => { const f = data.fantasmas.find(x => x.id === id); return s + (f ? (f.totalVenta || f.costoMercancia || 0) : 0); }, 0);
-      if (colchonSaldo <= 0) { alert("⚠️ El colchón está en $0.00 — no hay fondos disponibles."); return; }
-      if (totalNeeded > colchonSaldo) { if (!window.confirm(`⚠️ El colchón tiene ${fmt(colchonSaldo)} pero necesitas ${fmt(totalNeeded)}.\n\n¿Continuar de todas formas?`)) return; }
+      if (colchonSaldo <= 0) { showAlert("⚠️ El colchón está en $0.00 — no hay fondos disponibles."); return; }
+      if (totalNeeded > colchonSaldo) { if (!await showConfirm(`⚠️ El colchón tiene ${fmt(colchonSaldo)} pero necesitas ${fmt(totalNeeded)}.\n\n¿Continuar de todas formas?`)) return; }
       let nd = { ...data };
       let totalUsado = 0;
       ids.forEach(fId => {
@@ -3251,10 +3286,10 @@ export default function App() {
         setColMov({ tipo: "Entrada", concepto: "", monto: "", pedidoId: "", pedSearch: "" });
       };
 
-      const eliminarMovColchon = (movId) => {
+      const eliminarMovColchon = async (movId) => {
                 const mov = (c.movimientos || []).find(m => m.id === movId);
         if (!mov) return;
-        if (!window.confirm(`¿Eliminar movimiento del colchón?\n\n${mov.concepto || "?"} — ${fmt(mov.monto || 0)}`)) return;
+        if (!await showConfirm(`¿Eliminar movimiento del colchón?\n\n${mov.concepto || "?"} — ${fmt(mov.monto || 0)}`)) return;
         const d = mov.tipo === "Entrada" ? -mov.monto : mov.monto;
         persist({ ...data, colchon: { ...c, saldoActual: (c.saldoActual || 0) + d, movimientos: (c.movimientos || []).filter(m => m.id !== movId) } });
       };
@@ -3362,7 +3397,7 @@ export default function App() {
       const CATEGORIAS_USA = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "PROVEEDOR", "OTRO"];
 
       const allGastosUSA = filterByDate(data.gastosUSA || [], "fecha");
-      const eliminarGastoUSA = (gId) => { const g = (data.gastosUSA || []).find(x => x.id === gId); if (!g) return; if (!window.confirm(`¿Eliminar movimiento?\n\n${g.concepto || "?"} — ${fmt(g.monto || 0)}\n\nEsto puede afectar pedidos vinculados.`)) return; const ref = g?.cambioRef; persist({ ...data, gastosUSA: (data.gastosUSA || []).filter(x => x.id !== gId && x.id !== ref) }); };
+      const eliminarGastoUSA = async (gId) => { const g = (data.gastosUSA || []).find(x => x.id === gId); if (!g) return; if (!await showConfirm(`¿Eliminar movimiento?\n\n${g.concepto || "?"} — ${fmt(g.monto || 0)}\n\nEsto puede afectar pedidos vinculados.`)) return; const ref = g?.cambioRef; persist({ ...data, gastosUSA: (data.gastosUSA || []).filter(x => x.id !== gId && x.id !== ref) }); };
 
       // Saldos separados USD/MXN (con arrastre)
       const prevUSA = calcSaldoAnterior(data.gastosUSA || [], "fecha");
@@ -3976,24 +4011,26 @@ export default function App() {
         // If editing, first revert old abono
         if (editId) {
           const old = (data.transferencias || []).find(t => t.id === editId);
-          if (old) {
+          if (old && old.confirmada) {
             if (old.tipo === "flete") {
               nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)), fletePagado: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)) >= (f.costoFlete || 0) });
             } else {
               nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)), clientePago: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)) >= f.costoMercancia });
             }
           }
-          nd.transferencias = (nd.transferencias || []).map(t => t.id !== editId ? t : { ...t, pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "" });
+          nd.transferencias = (nd.transferencias || []).map(t => t.id !== editId ? t : { ...t, pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false });
         } else {
-          const t = { id: Date.now(), pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "" };
+          // Nueva transferencia: pendiente de confirmación — NO marca como pagado aún
+          const t = { id: Date.now(), pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false };
           nd.transferencias = [...(nd.transferencias || []), t];
-        }
-
-        // Apply new abono
-        if (tForm.tipo === "flete") {
-          nd.fantasmas = nd.fantasmas.map(f => f.id !== tForm.pedidoId ? f : { ...f, abonoFlete: (f.abonoFlete || 0) + montoConvertido, fletePagado: (f.abonoFlete || 0) + montoConvertido >= (f.costoFlete || 0), fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: tForm.fecha, accion: `🏦 ${editId ? "Transferencia editada" : "Transferencia"} flete: ${tForm.moneda === "MXN" ? `$${mxn} MXN @${tc}` : `$${usd} USD`} → ${cuenta?.banco} (${cuenta?.titular})`, quien: role }] });
-        } else {
-          nd.fantasmas = nd.fantasmas.map(f => f.id !== tForm.pedidoId ? f : { ...f, abonoMercancia: (f.abonoMercancia || 0) + montoConvertido, clientePago: (f.abonoMercancia || 0) + montoConvertido >= f.costoMercancia, clientePagoMonto: (f.abonoMercancia || 0) + montoConvertido, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: tForm.fecha, accion: `🏦 ${editId ? "Transferencia editada" : "Transferencia"} fantasma: ${tForm.moneda === "MXN" ? `$${mxn} MXN @${tc}` : `$${usd} USD`} → ${cuenta?.banco} (${cuenta?.titular})`, quien: role }] });
+          // Mark pedido as TRANS_PENDIENTE — has funds coming, not paid yet
+          nd.fantasmas = nd.fantasmas.map(f => f.id !== tForm.pedidoId ? f : {
+            ...f,
+            dineroStatus: "TRANS_PENDIENTE",
+            transferenciaPendiente: true,
+            fechaActualizacion: today(),
+            historial: [...(f.historial || []), { fecha: tForm.fecha, accion: `🏦 Transferencia registrada (pendiente confirmación): ${tForm.moneda === "MXN" ? `$${mxn} MXN @${tc}` : `$${usd} USD`} → ${cuenta?.banco}`, quien: role }]
+          });
         }
         persist(nd);
         setShowTrans(false);
@@ -4209,7 +4246,7 @@ export default function App() {
         setShowGasto(false);
       };
 
-      const eliminarGasto = (gId) => { const g = gastos.find(x => x.id === gId); if (!g) return; if (!window.confirm(`¿Eliminar movimiento?\n\n${g.concepto || "?"} — ${fmt(g.monto || 0)}`)) return; persist({ ...data, gastosBodega: gastos.filter(g => g.id !== gId) }); };
+      const eliminarGasto = async (gId) => { const g = gastos.find(x => x.id === gId); if (!g) return; if (!await showConfirm(`¿Eliminar movimiento?\n\n${g.concepto || "?"} — ${fmt(g.monto || 0)}`)) return; persist({ ...data, gastosBodega: gastos.filter(g => g.id !== gId) }); };
 
       return (
         <div>
@@ -4695,11 +4732,11 @@ export default function App() {
     const saldoMXN = prevAdm.mxn + ingMXN - egrMXN;
     const fmtMXN = (n) => "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 }) + " MXN";
 
-    const eliminarMov = (mId) => {
+    const eliminarMov = async (mId) => {
       const m = (data.gastosAdmin || []).find(x => x.id === mId);
       if (!m) return;
       const desc = `${m.tipo === "ingreso" ? "Ingreso" : "Egreso"}: ${m.concepto || "?"} — ${fmt(m.monto || 0)}`;
-      if (!window.confirm(`¿Estás seguro de eliminar este movimiento?\n\n${desc}\n\nEsto puede afectar sobres y pedidos vinculados.`)) return;
+      if (!await showConfirm(`¿Estás seguro de eliminar este movimiento?\n\n${desc}\n\nEsto puede afectar sobres y pedidos vinculados.`)) return;
       const ref = m?.cambioRef;
       const nd = { ...data, gastosAdmin: (data.gastosAdmin || []).filter(x => x.id !== mId && x.id !== ref) };
       // If it's a SOBRE USA egreso, revert linked pedidos
@@ -4977,8 +5014,47 @@ export default function App() {
     const totalMXN = list.reduce((s,t) => s+(t.montoMXN||0),0);
     const totalUSD = list.reduce((s,t) => s+(t.montoUSD||0),0);
     const cTotals = CUENTAS_ADM.map(c => { const ts = allTrans.filter(t => t.cuentaId === c.id); const conf = ts.filter(t => t.confirmada); const pend = ts.filter(t => !t.confirmada && !t.noRecibida); return { ...c, saldoMXN: conf.reduce((s,t)=>s+(t.montoMXN||0),0), saldoUSD: conf.reduce((s,t)=>s+(t.montoUSD||0),0), countAll: ts.length, pendCount: pend.length, pendMXN: pend.reduce((s,t)=>s+(t.montoMXN||0),0) }; });
-    const confirmarT = (id) => persist({...data, transferencias: allTrans.map(t => t.id !== id ? t : {...t, confirmada: true, noRecibida: false, fechaConfirmacion: today(), confirmadaPor: role})});
-    const desconfirmarT = (id) => persist({...data, transferencias: allTrans.map(t => t.id !== id ? t : {...t, confirmada: false, fechaConfirmacion: null})});
+    const confirmarT = (id) => {
+      const t = allTrans.find(x => x.id === id);
+      if (!t) return;
+      let nd = { ...data, transferencias: allTrans.map(x => x.id !== id ? x : { ...x, confirmada: true, noRecibida: false, fechaConfirmacion: today(), confirmadaPor: role }) };
+      // NOW apply the payment to the pedido
+      const montoUSD = t.montoUSD || 0;
+      if (t.tipo === "flete") {
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : {
+          ...f, abonoFlete: (f.abonoFlete || 0) + montoUSD,
+          fletePagado: (f.abonoFlete || 0) + montoUSD >= (f.costoFlete || 0),
+          transferenciaPendiente: false,
+          dineroStatus: f.clientePago ? "TODO_PAGADO" : f.dineroStatus === "TRANS_PENDIENTE" ? "SIN_FONDOS" : f.dineroStatus,
+          fechaActualizacion: today(),
+          historial: [...(f.historial || []), { fecha: today(), accion: `✅ Transferencia flete confirmada: ${fmt(montoUSD)} → ${t.banco}`, quien: role }]
+        });
+      } else {
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : {
+          ...f, abonoMercancia: (f.abonoMercancia || 0) + montoUSD,
+          clientePago: (f.abonoMercancia || 0) + montoUSD >= f.costoMercancia,
+          clientePagoMonto: (f.abonoMercancia || 0) + montoUSD,
+          transferenciaPendiente: false,
+          dineroStatus: (f.abonoMercancia || 0) + montoUSD >= f.costoMercancia ? (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? "TODO_PAGADO" : "FANTASMA_PAGADO") : "SIN_FONDOS",
+          fechaActualizacion: today(),
+          historial: [...(f.historial || []), { fecha: today(), accion: `✅ Transferencia fantasma confirmada: ${fmt(montoUSD)} → ${t.banco}`, quien: role }]
+        });
+      }
+      persist(nd);
+    };
+    const desconfirmarT = (id) => {
+      const t = allTrans.find(x => x.id === id);
+      if (!t) return;
+      let nd = { ...data, transferencias: allTrans.map(x => x.id !== id ? x : { ...x, confirmada: false, fechaConfirmacion: null }) };
+      // Revert payment from pedido
+      const montoUSD = t.montoUSD || 0;
+      if (t.tipo === "flete") {
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - montoUSD), fletePagado: Math.max(0, (f.abonoFlete || 0) - montoUSD) >= (f.costoFlete || 0), transferenciaPendiente: true });
+      } else {
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - montoUSD), clientePago: Math.max(0, (f.abonoMercancia || 0) - montoUSD) >= f.costoMercancia, clientePagoMonto: Math.max(0, (f.abonoMercancia || 0) - montoUSD), transferenciaPendiente: true });
+      }
+      persist(nd);
+    };
     const noRecibidaT = (id) => persist({...data, transferencias: allTrans.map(t => t.id !== id ? t : {...t, noRecibida: true, confirmada: false, fechaNoRecibida: today()})});
     const revertirT = (id) => persist({...data, transferencias: allTrans.map(t => t.id !== id ? t : {...t, noRecibida: false, fechaNoRecibida: null})});
 
@@ -5114,7 +5190,7 @@ export default function App() {
                   <span style={{ flex: 1, color: "#6B7280" }}>{pf?.descripcion || a.nota || ""}</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{fmt(a.monto)}</span>
                   <Btn sz="sm" v="success" onClick={() => { setRecForm({ monto: String(a.monto), montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "efectivo" }); setShowRecuperar(a.id); }}>💰 Recuperar</Btn>
-                  <button onClick={() => { if (!window.confirm(`¿Eliminar adelanto de ${fmt(a.monto)}?\n\nSe eliminará también el movimiento de egreso.`)) return; const movRef = a.movRef; persist({ ...data, adelantosAdmin: adelantos.filter(x => x.id !== a.id), gastosAdmin: (data.gastosAdmin || []).filter(m => m.id !== movRef && m.adelantoRef !== a.id) }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
+                  <button onClick={async () => { if (!await showConfirm(`¿Eliminar adelanto de ${fmt(a.monto)}?\n\nSe eliminará también el movimiento de egreso.`)) return; const movRef = a.movRef; persist({ ...data, adelantosAdmin: adelantos.filter(x => x.id !== a.id), gastosAdmin: (data.gastosAdmin || []).filter(m => m.id !== movRef && m.adelantoRef !== a.id) }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
                 </div>
               );
             })}
@@ -5501,7 +5577,7 @@ export default function App() {
                 <div key={f.k} style={{ background: cxpExpand === "fondo_"+f.k ? "#fff" : f.bg, borderRadius: 10, padding: "16px 20px", border: `2px solid ${f.bc}`, cursor: "pointer" }} onClick={() => setCxpExpand(cxpExpand === "fondo_"+f.k ? null : "fondo_"+f.k)}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: f.c, textTransform: "uppercase" }}>{f.l}</div>
-                    {f.custom && <button onClick={(e) => { e.stopPropagation(); if (window.confirm("¿Eliminar esta cuenta?")) { persist({ ...data, fondosCustom: (data.fondosCustom||[]).filter(x => x.k !== f.k) }); } }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", fontSize: 12, padding: 0 }}>×</button>}
+                    {f.custom && <button onClick={async (e) => { e.stopPropagation(); if (await showConfirm("¿Eliminar esta cuenta?")) { persist({ ...data, fondosCustom: (data.fondosCustom||[]).filter(x => x.k !== f.k) }); } }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", fontSize: 12, padding: 0 }}>×</button>}
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "monospace", color: f.c }}>{fmt(fondos[f.k] || 0)}</div>
                   <div style={{ display: "flex", gap: 3, marginTop: 8 }}>
@@ -6063,7 +6139,7 @@ export default function App() {
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {stats.pend > 0 && <span style={{ background: "#DC2626", color: "#fff", padding: "1px 7px", borderRadius: 8, fontSize: 9, fontWeight: 600 }}>{stats.pend}</span>}
-          <button onClick={() => { setRole(null); setCurrentUser(null); setLoginUser(""); setLoginPass(""); setView("main"); setMenuOpen(false); }} style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", color: "#94A3B8", padding: "4px 10px", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>Salir</button>
+          <button onClick={() => { setRole(null); setCurrentUser(null); setLoginUser(""); setLoginPass(""); setView("main"); setMenuOpen(false); try { localStorage.removeItem("ot_role"); localStorage.removeItem("ot_user"); } catch {} }} style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", color: "#94A3B8", padding: "4px 10px", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>Salir</button>
         </div>
       </header>
 
@@ -6079,7 +6155,7 @@ export default function App() {
             </div>
             {/* Nav items */}
             {navItems.map(n => (
-              <button key={n.k} onClick={() => { setView(n.k); setSelId(null); setFEst("ALL"); setSearch(""); setMenuOpen(false); }}
+              <button key={n.k} onClick={() => { setPrevView(view); setView(n.k); setSelId(null); setFEst("ALL"); setSearch(""); setMenuOpen(false); }}
                 style={{ width: "100%", background: view === n.k ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === n.k ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: view === n.k ? 700 : 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === n.k ? "3px solid #60A5FA" : "3px solid transparent" }}>
                 {n.i} {n.l}
               </button>
@@ -6126,8 +6202,8 @@ export default function App() {
       </div>
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "18px 24px" }}>
         {/* Botón atrás — aparece en todas las pantallas excepto home */}
-        {view !== "main" && view !== "detail" && (
-          <button onClick={() => { setPrevView(view); setView("main"); setSelId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
+        {view !== "main" && view !== "detail" && view !== "home" && (
+          <button onClick={() => { setView("home"); setSelId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
             ← Inicio
           </button>
         )}
@@ -6148,6 +6224,23 @@ export default function App() {
       </main>
       {showNew && <NewForm />}
       {showColchon && <ColchonModal />}
+      {/* Global dialog modal - replaces window.alert and window.confirm */}
+      {dialog && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: 28, maxWidth: 400, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.3)", fontFamily: "inherit" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#1A2744" }}>{dialog.title}</div>
+            <div style={{ fontSize: 13, color: "#374151", marginBottom: 24, lineHeight: 1.6, whiteSpace: "pre-line" }}>{dialog.msg}</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              {dialog.type === "confirm" && (
+                <button onClick={dialog.onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#F9FAFB", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+              )}
+              <button onClick={dialog.onOk} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "#1A2744", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                {dialog.type === "confirm" ? "Sí, confirmar" : "Entendido"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
