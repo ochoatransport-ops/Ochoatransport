@@ -1,35 +1,182 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { db } from "./firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  collection, doc, getDoc, setDoc, deleteDoc,
+  onSnapshot, writeBatch, getDocs
+} from "firebase/firestore";
 
 const STORAGE_KEY = "fantasmas-v4-data";
-const DOC_REF = () => doc(db, "app", "data");
 
-async function load() {
+// ── Firestore references ──────────────────────────────────────────
+const fantasmasCol = () => collection(db, "fantasmas");
+const configDoc   = (key) => doc(db, "config", key);
+
+// ── Load all data once (initial load) ────────────────────────────
+async function loadAll() {
   try {
-    const snap = await getDoc(DOC_REF());
-    if (snap.exists()) return snap.data().payload ? JSON.parse(snap.data().payload) : init();
-  } catch(e) { console.error("Firebase load error:", e); }
-  try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
-  return init();
+    const [
+      fantasmasSnap,
+      metaSnap, finanzasSnap, colchonSnap,
+      cuentasSnap, fondosSnap, enviosSnap, bitacoraSnap
+    ] = await Promise.all([
+      getDocs(fantasmasCol()),
+      getDoc(configDoc("meta")),
+      getDoc(configDoc("finanzas")),
+      getDoc(configDoc("colchon")),
+      getDoc(configDoc("cuentas")),
+      getDoc(configDoc("fondos")),
+      getDoc(configDoc("envios")),
+      getDoc(configDoc("bitacora")),
+    ]);
+
+    const fantasmas = fantasmasSnap.docs.map(d => d.data());
+    const meta      = metaSnap.exists()     ? metaSnap.data()     : {};
+    const finanzas  = finanzasSnap.exists() ? finanzasSnap.data() : {};
+    const colchon   = colchonSnap.exists()  ? colchonSnap.data()  : {};
+    const cuentas   = cuentasSnap.exists()  ? cuentasSnap.data()  : {};
+    const fondos    = fondosSnap.exists()   ? fondosSnap.data()   : {};
+    const envios    = enviosSnap.exists()   ? enviosSnap.data()   : {};
+    const bitacora  = bitacoraSnap.exists() ? bitacoraSnap.data() : {};
+
+    return {
+      fantasmas,
+      nextId:              meta.nextId              ?? 2800,
+      _appVersion:         meta._appVersion         ?? 0,
+      vendedores:          meta.vendedores           ?? [],
+      clientes:            meta.clientes             ?? [],
+      proveedoresList:     meta.proveedoresList      ?? [],
+      provUbicaciones:     meta.provUbicaciones      ?? {},
+      proveedoresInfo:     meta.proveedoresInfo      ?? {},
+      gastosAdmin:         finanzas.gastosAdmin      ?? [],
+      gastosUSA:           finanzas.gastosUSA        ?? [],
+      gastosBodega:        finanzas.gastosBodega     ?? [],
+      transferencias:      finanzas.transferencias   ?? [],
+      adelantosAdmin:      finanzas.adelantosAdmin   ?? [],
+      colchon:             colchon.data              ?? { montoOriginal: 0, saldoActual: 0, movimientos: [] },
+      cuentasPorPagar:     cuentas.cuentasPorPagar   ?? [],
+      cuentasPorCobrarEmp: cuentas.cuentasPorCobrarEmp ?? [],
+      fondos:              fondos.fondos             ?? {},
+      fondosCustom:        fondos.fondosCustom       ?? [],
+      fondosMovs:          fondos.fondosMovs         ?? [],
+      envios:              envios.list               ?? [],
+      bitacoraGanancias:   bitacora.list             ?? [],
+    };
+  } catch(e) {
+    console.error("Firebase loadAll error:", e);
+    // Fallback to localStorage
+    try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
+    return init();
+  }
 }
 
-async function save(d) {
+// ── Save changed parts (smart diff save) ─────────────────────────
+async function saveAll(nd, prev) {
   try {
-    const payload = JSON.stringify(d);
-    const sizeKB = Math.round(payload.length / 1024);
-    if (sizeKB > 900) {
-      console.warn("Payload too large:", sizeKB, "KB");
+    const batch = writeBatch(db);
+
+    // 1. Fantasmas — save only changed/added pedidos, delete removed ones
+    if (nd.fantasmas !== prev?.fantasmas) {
+      const prevIds = new Set((prev?.fantasmas || []).map(f => f.id));
+      const newIds  = new Set(nd.fantasmas.map(f => f.id));
+
+      // Deleted pedidos
+      for (const id of prevIds) {
+        if (!newIds.has(id)) batch.delete(doc(db, "fantasmas", id));
+      }
+      // New or changed pedidos
+      for (const f of nd.fantasmas) {
+        const prev_f = (prev?.fantasmas || []).find(x => x.id === f.id);
+        if (!prev_f || JSON.stringify(prev_f) !== JSON.stringify(f)) {
+          batch.set(doc(db, "fantasmas", f.id), f);
+        }
+      }
     }
-    await setDoc(DOC_REF(), { payload, updatedAt: Date.now(), sizeKB });
-    localStorage.setItem(STORAGE_KEY, payload);
+
+    // 2. Meta config
+    const metaChanged = !prev ||
+      nd.nextId !== prev.nextId ||
+      nd._appVersion !== prev._appVersion ||
+      JSON.stringify(nd.vendedores) !== JSON.stringify(prev.vendedores) ||
+      JSON.stringify(nd.clientes) !== JSON.stringify(prev.clientes) ||
+      JSON.stringify(nd.proveedoresList) !== JSON.stringify(prev.proveedoresList) ||
+      JSON.stringify(nd.provUbicaciones) !== JSON.stringify(prev.provUbicaciones) ||
+      JSON.stringify(nd.proveedoresInfo) !== JSON.stringify(prev.proveedoresInfo);
+    if (metaChanged) {
+      batch.set(configDoc("meta"), {
+        nextId: nd.nextId,
+        _appVersion: nd._appVersion ?? 3,
+        vendedores: nd.vendedores ?? [],
+        clientes: nd.clientes ?? [],
+        proveedoresList: nd.proveedoresList ?? [],
+        provUbicaciones: nd.provUbicaciones ?? {},
+        proveedoresInfo: nd.proveedoresInfo ?? {},
+      });
+    }
+
+    // 3. Finanzas
+    const finChanged = !prev ||
+      JSON.stringify(nd.gastosAdmin) !== JSON.stringify(prev.gastosAdmin) ||
+      JSON.stringify(nd.gastosUSA) !== JSON.stringify(prev.gastosUSA) ||
+      JSON.stringify(nd.gastosBodega) !== JSON.stringify(prev.gastosBodega) ||
+      JSON.stringify(nd.transferencias) !== JSON.stringify(prev.transferencias) ||
+      JSON.stringify(nd.adelantosAdmin) !== JSON.stringify(prev.adelantosAdmin);
+    if (finChanged) {
+      batch.set(configDoc("finanzas"), {
+        gastosAdmin: nd.gastosAdmin ?? [],
+        gastosUSA: nd.gastosUSA ?? [],
+        gastosBodega: nd.gastosBodega ?? [],
+        transferencias: nd.transferencias ?? [],
+        adelantosAdmin: nd.adelantosAdmin ?? [],
+      });
+    }
+
+    // 4. Colchon
+    if (!prev || JSON.stringify(nd.colchon) !== JSON.stringify(prev.colchon)) {
+      batch.set(configDoc("colchon"), { data: nd.colchon ?? { montoOriginal: 0, saldoActual: 0, movimientos: [] } });
+    }
+
+    // 5. Cuentas
+    if (!prev ||
+      JSON.stringify(nd.cuentasPorPagar) !== JSON.stringify(prev.cuentasPorPagar) ||
+      JSON.stringify(nd.cuentasPorCobrarEmp) !== JSON.stringify(prev.cuentasPorCobrarEmp)) {
+      batch.set(configDoc("cuentas"), {
+        cuentasPorPagar: nd.cuentasPorPagar ?? [],
+        cuentasPorCobrarEmp: nd.cuentasPorCobrarEmp ?? [],
+      });
+    }
+
+    // 6. Fondos
+    if (!prev ||
+      JSON.stringify(nd.fondos) !== JSON.stringify(prev.fondos) ||
+      JSON.stringify(nd.fondosCustom) !== JSON.stringify(prev.fondosCustom) ||
+      JSON.stringify(nd.fondosMovs) !== JSON.stringify(prev.fondosMovs)) {
+      batch.set(configDoc("fondos"), {
+        fondos: nd.fondos ?? {},
+        fondosCustom: nd.fondosCustom ?? [],
+        fondosMovs: nd.fondosMovs ?? [],
+      });
+    }
+
+    // 7. Envios
+    if (!prev || JSON.stringify(nd.envios) !== JSON.stringify(prev.envios)) {
+      batch.set(configDoc("envios"), { list: nd.envios ?? [] });
+    }
+
+    // 8. Bitacora
+    if (!prev || JSON.stringify(nd.bitacoraGanancias) !== JSON.stringify(prev.bitacoraGanancias)) {
+      batch.set(configDoc("bitacora"), { list: nd.bitacoraGanancias ?? [] });
+    }
+
+    await batch.commit();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nd));
     return true;
   } catch(e) {
-    console.error("Firebase save error:", e.code, e.message);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); return "local"; } catch {}
+    console.error("Firebase saveAll error:", e.code, e.message);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nd)); return "local"; } catch {}
     return false;
   }
 }
+
 
 const ESTADOS = { PEDIDO: "Pedido generado", RECOLECTADO: "Recolectado — en camino", BODEGA_TJ: "En bodega TJ", ENTREGADO: "Entregado", CERRADO: "Cerrado" };
 const ESTADO_KEYS = Object.keys(ESTADOS);
@@ -246,38 +393,57 @@ export default function App() {
   };
 
 
-  useEffect(() => { load().then(d => {
-    // VERSION CHECK — solo migra si falta _appVersion, no borra datos existentes
-    const APP_VERSION = 3;
-    if ((d._appVersion || 0) < APP_VERSION) {
-      const fresh = init();
-      fresh._appVersion = APP_VERSION;
-      setData(fresh); save(fresh); setLoading(false);
-      return;
-    }
-    // Cleanup: remove orphaned pedidos from envios
-    const fIds = new Set(d.fantasmas.map(f => f.id));
-    if (d.envios) {
-      d.envios = d.envios.map(e => ({ ...e, pedidos: e.pedidos.filter(p => fIds.has(p.id)) })).filter(e => e.pedidos.length > 0);
-    }
-    // Sync dineroStatus for pedidos with payments
-    d.fantasmas = d.fantasmas.map(f => {
-      const mercPagado = f.clientePago;
-      const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
-      if (mercPagado && fletePagado && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
-      if (mercPagado && !fletePagado && !["TODO_PAGADO", "FANTASMA_PAGADO", "DINERO_USA", "COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
-      if (!mercPagado && fletePagado && f.costoFlete > 0 && !["TODO_PAGADO", "FLETE_PAGADO", "DINERO_USA", "COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
-      return f;
+  const prevDataRef = useRef(null);
+
+  useEffect(() => {
+    // Initial load from Firestore
+    loadAll().then(d => {
+      const APP_VERSION = 3;
+      if ((d._appVersion || 0) < APP_VERSION) {
+        // MIGRATE: don't wipe existing data, just update version and save to new structure
+        d._appVersion = APP_VERSION;
+        if ((d.nextId || 0) < 2800) d.nextId = 2800;
+        prevDataRef.current = d;
+        setData(d);
+        saveAll(d, null); // saves to new Firestore structure
+        setLoading(false);
+        return;
+      }
+      // Sync dineroStatus
+      d.fantasmas = d.fantasmas.map(f => {
+        const mercPagado = f.clientePago;
+        const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
+        if (mercPagado && fletePagado && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
+        if (mercPagado && !fletePagado && !["TODO_PAGADO","FANTASMA_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
+        if (!mercPagado && fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
+        return f;
+      });
+      if ((d.nextId || 0) < 2800) d.nextId = 2800;
+      prevDataRef.current = d;
+      setData(d);
+      setLoading(false);
     });
-    // Ensure nextId starts from 2800
-    if ((d.nextId || 0) < 2800) { d.nextId = 2800; }
-    setData(d); save(d); setLoading(false);
-  }); }, []);
-  const [saveStatus, setSaveStatus] = useState("ok"); // "ok" | "saving" | "error" | "local"
+
+    // Real-time listener — syncs fantasmas changes from other users instantly
+    const unsubscribe = onSnapshot(collection(db, "fantasmas"), (snap) => {
+      const remoteFantasmas = snap.docs.map(d => d.data());
+      setData(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev, fantasmas: remoteFantasmas };
+        prevDataRef.current = updated;
+        return updated;
+      });
+    }, (err) => console.error("Realtime listener error:", err));
+
+    return () => unsubscribe();
+  }, []);
+
+  const [saveStatus, setSaveStatus] = useState("ok");
   const persist = useCallback(nd => {
     setData(nd);
     setSaveStatus("saving");
-    save(nd).then(result => {
+    saveAll(nd, prevDataRef.current).then(result => {
+      prevDataRef.current = nd;
       if (result === true) setSaveStatus("ok");
       else if (result === "local") setSaveStatus("local");
       else setSaveStatus("error");
