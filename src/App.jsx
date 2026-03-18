@@ -2559,6 +2559,7 @@ export default function App() {
     );
   };
 
+
   // ============ RECOLECCIÓN (Jordi) ============
   const Recoleccion = () => {
     const [selected, setSelected] = useState({});
@@ -2566,8 +2567,8 @@ export default function App() {
     const [fProv, setFProv] = useState("ALL");
     const provInfo = data.proveedoresInfo || {};
 
-    // Recolección: ONLY pedidos with money confirmed, still in PEDIDO estado
-    let pendientes = data.fantasmas.filter(f => f.estado === "PEDIDO" && (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO")).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+    // Recolección: ONLY pedidos with money confirmed, still in PEDIDO estado, with chofer
+    let pendientes = data.fantasmas.filter(f => f.estado === "PEDIDO" && (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO" || f.dineroStatus === "NO_APLICA") && f.choferAsignado).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
 
     const isOtay = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("otay"); };
     const isLA = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("ángeles") || u.includes("angeles"); };
@@ -2604,10 +2605,19 @@ export default function App() {
       if (ids.length === 0) return;
       let newData = { ...data };
       ids.forEach(fId => {
-        newData = { ...newData, fantasmas: newData.fantasmas.map(f => f.id !== fId ? f : { ...f, dineroStatus: "SIN_FONDOS", usaColchon: false, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: "Dinero regresado — vuelve a pendientes", quien: role }] }) };
+        newData = { ...newData, fantasmas: newData.fantasmas.map(f => f.id !== fId ? f : { ...f, dineroStatus: "SIN_FONDOS", choferAsignado: null, usaColchon: false, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: "↩ Regresado a pendientes — sin dinero ni chofer", quien: role }] }) };
       });
-      persist(newData);
-      setSelected({});
+      persist(newData); setSelected({});
+    };
+
+    const regresarAChofer = () => {
+      const ids = Object.keys(selected).filter(k => selected[k]);
+      if (ids.length === 0) return;
+      let newData = { ...data };
+      ids.forEach(fId => {
+        newData = { ...newData, fantasmas: newData.fantasmas.map(f => f.id !== fId ? f : { ...f, choferAsignado: null, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: "↩ Regresado a Asignar Chofer — se quitó el chofer", quien: role }] }) };
+      });
+      persist(newData); setSelected({});
     };
 
     const renderItem = (f) => {
@@ -2623,6 +2633,7 @@ export default function App() {
             {f.fleteDesconocido && <span style={{ fontSize: 9, background: "#D97706", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>❓ FLETE DESC.</span>}
             {f.costoDesconocido && <span style={{ fontSize: 9, background: "#D97706", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>❓ COSTO DESC.</span>}
               <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+              {f.choferAsignado && <span style={{ fontSize: 9, background: "#DBEAFE", color: "#1E40AF", padding: "1px 7px", borderRadius: 3, fontWeight: 700 }}>🚗 {f.choferAsignado}</span>}
             </div>
             <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div>
             <div style={{ fontSize: 10, color: "#9CA3AF", display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
@@ -2688,12 +2699,6 @@ export default function App() {
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🛒 Recolección</h2>
             <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>{pendientes.length} pedidos listos para recoger</div>
           </div>
-          {selCount > 0 && (
-            <div style={{ display: "flex", gap: 4 }}>
-              <Btn sz="sm" v="warning" onClick={regresarAPendientes}>← Regresar ({selCount})</Btn>
-              <Btn sz="sm" onClick={marcarRecolectado} style={{ background: "#6366F1" }}>✅ Recolectado ({selCount})</Btn>
-            </div>
-          )}
         </div>
         <div style={{ display: "flex", gap: 5, marginBottom: 10, flexWrap: "wrap" }}>
           <select value={fZona} onChange={e => setFZona(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", background: fZona !== "ALL" ? "#EFF6FF" : "#FAFAFA" }}>
@@ -2721,18 +2726,21 @@ export default function App() {
         )}
 
         {selCount > 0 && (
-          <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)" }}>
+          <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)", flexWrap: "wrap", gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{selCount} pedido{selCount > 1 ? "s" : ""}</span>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Btn v="secondary" sz="sm" onClick={() => setSelected({})}>Deseleccionar</Btn>
-              <Btn onClick={regresarAPendientes} style={{ background: "#DC2626" }}>← Regresar a pendientes</Btn>
-              <Btn onClick={marcarRecolectado} style={{ background: "#6366F1" }}>✅ Marcar como recolectado</Btn>
+              <Btn onClick={regresarAChofer} style={{ background: "#D97706" }}>🚗 ← Cambiar chofer</Btn>
+              <Btn onClick={regresarAPendientes} style={{ background: "#DC2626" }}>💵 ← A pendientes</Btn>
+              <Btn onClick={marcarRecolectado} style={{ background: "#6366F1" }}>✅ Marcar recolectado</Btn>
+            </div>
             </div>
           </div>
         )}
       </div>
     );
   };
+
 
   // ============ BODEGA USA (wrapper with sub-tabs) ============
   const BodegaUSA = () => {
@@ -2744,8 +2752,8 @@ export default function App() {
     const pendientes = data.fantasmas.filter(f => f.estado === "PEDIDO" && (!f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "SOBRE_LISTO" || f.dineroStatus === "DINERO_CAMINO")).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
     const sobreEnCamino = pendientes.filter(f => f.dineroStatus === "DINERO_CAMINO");
     const sinSobreUSA = pendientes.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "SOBRE_LISTO");
-    // Recolección: estado PEDIDO, YA tiene dinero (DINERO_USA o COLCHON_USADO)
-    const listoRecoleccion = data.fantasmas.filter(f => f.estado === "PEDIDO" && (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO" || f.dineroStatus === "NO_APLICA")).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+    // Recolección: estado PEDIDO, YA tiene dinero (DINERO_USA o COLCHON_USADO) Y chofer asignado
+    const listoRecoleccion = data.fantasmas.filter(f => f.estado === "PEDIDO" && (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO" || f.dineroStatus === "NO_APLICA") && f.choferAsignado).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
     // Recolectados: ya fueron recogidos, pendientes de confirmar en TJ
     const recolectados = data.fantasmas.filter(f => f.estado === "RECOLECTADO").sort((a, b) => new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
 
@@ -3205,15 +3213,121 @@ export default function App() {
       );
     };
 
+    // Listo para chofer: DINERO_USA o COLCHON_USADO pero sin chofer asignado aún
+    const listoParaChofer = data.fantasmas.filter(f =>
+      f.estado === "PEDIDO" &&
+      (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO" || f.dineroStatus === "NO_APLICA") &&
+      !f.choferAsignado
+    ).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+
+    const CHOFERES = ["Jorge Villanueva","Luis Arias","Aaron Enrique","Edgar Serrano","Neftali Ochoa","Daniel Ochoa","Jordy"];
+
+    const AsignarChofer = () => {
+      const [selPeds, setSelPeds] = useState({});
+      const [choferSel, setChoferSel] = useState("");
+      const selCount = Object.keys(selPeds).filter(k => selPeds[k]).length;
+
+      const asignar = () => {
+        if (!choferSel || selCount === 0) return;
+        const ids = Object.keys(selPeds).filter(k => selPeds[k]);
+        let nd = { ...data };
+        ids.forEach(fId => {
+          nd = { ...nd, fantasmas: nd.fantasmas.map(f => f.id !== fId ? f : {
+            ...f, choferAsignado: choferSel, fechaActualizacion: today(),
+            historial: [...(f.historial || []), { fecha: today(), accion: `🚗 Sobre asignado a ${choferSel}`, quien: role }]
+          }) };
+        });
+        persist(nd); setSelPeds({}); setChoferSel(""); setTab("recoleccion");
+      };
+
+      const regresarAPendientesDesdeChofer = () => {
+        const ids = Object.keys(selPeds).filter(k => selPeds[k]);
+        if (ids.length === 0) return;
+        let nd = { ...data };
+        ids.forEach(fId => {
+          nd = { ...nd, fantasmas: nd.fantasmas.map(f => f.id !== fId ? f : {
+            ...f, dineroStatus: "SIN_FONDOS", usaColchon: false, fechaActualizacion: today(),
+            historial: [...(f.historial || []), { fecha: today(), accion: "↩ Regresado a pendientes — se revirtió el dinero", quien: role }]
+          }) };
+        });
+        persist(nd); setSelPeds({});
+      };
+
+      return (
+        <div>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700 }}>🚗 Asignar Chofer</h2>
+            <div style={{ fontSize: 11, color: "#6B7280" }}>Selecciona los sobres y asígnalos a un chofer — pasarán a Recolección</div>
+          </div>
+          {listoParaChofer.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+              <p style={{ fontSize: 12 }}>No hay sobres listos para asignar.</p>
+              <p style={{ fontSize: 11, color: "#D1D5DB" }}>Los sobres aparecen aquí cuando el dinero ya está en USA.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 80 }}>
+                {listoParaChofer.map(f => {
+                  const sel = !!selPeds[f.id];
+                  const dias = diasHabiles(f.fechaCreacion);
+                  return (
+                    <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: sel ? "#EFF6FF" : f.urgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: sel ? "2px solid #2563EB" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", cursor: "pointer" }}>
+                      <input type="checkbox" checked={sel} onChange={e => setSelPeds({ ...selPeds, [f.id]: e.target.checked })} style={{ width: 18, height: 18, accentColor: "#2563EB", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
+                          <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
+                          {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
+                          <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                          <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
+                          <span style={{ fontSize: 9, background: dias >= 3 ? "#FEE2E2" : dias >= 2 ? "#FEF3C7" : "#F3F4F6", color: dias >= 3 ? "#DC2626" : dias >= 2 ? "#D97706" : "#6B7280", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🕐 {dias}d</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}{f.proveedor ? ` · ${f.proveedor}` : ""}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>{fmt(f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia)}</div>
+                        {f.costoFlete > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Flete: {fmt(f.costoFlete)}</div>}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              {/* Sticky action bar */}
+              <div style={{ position: "sticky", bottom: 16, background: "#1A2744", borderRadius: 12, padding: "14px 16px", boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>
+                <div style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600, marginBottom: 8 }}>
+                  {selCount > 0 ? `${selCount} sobre${selCount > 1 ? "s" : ""} seleccionado${selCount > 1 ? "s" : ""} — elige chofer:` : "Selecciona sobres arriba y elige un chofer:"}
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+                  {CHOFERES.map(ch => (
+                    <button key={ch} onClick={() => setChoferSel(ch)} style={{ padding: "7px 12px", borderRadius: 6, border: "none", background: choferSel === ch ? "#2563EB" : "rgba(255,255,255,.1)", color: choferSel === ch ? "#fff" : "#94A3B8", cursor: "pointer", fontSize: 12, fontWeight: choferSel === ch ? 700 : 400, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                      {ch}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  {selCount > 0 && <Btn v="secondary" sz="sm" onClick={() => setSelPeds({})}>Deseleccionar</Btn>}
+                  {selCount > 0 && <Btn onClick={regresarAPendientesDesdeChofer} style={{ background: "#DC2626" }}>💵 ← A pendientes</Btn>}
+                  <Btn disabled={!choferSel || selCount === 0} onClick={asignar} style={{ background: choferSel && selCount > 0 ? "#059669" : undefined }}>
+                    🚗 Asignar{choferSel ? ` a ${choferSel}` : " chofer"}
+                  </Btn>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🇺🇸 Bodega USA</h2>
           <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, overflow: "auto" }}>
             {[
-              { k: "pendientes",  l: "💵 Pendientes",  c: pendientes.length },
-              { k: "recoleccion", l: "🛒 Recolección", c: listoRecoleccion.length },
-              { k: "recolectado", l: "📦 Recolectado",  c: recolectados.length },
+              { k: "pendientes",  l: "💵 Pendientes",      c: pendientes.length },
+              { k: "chofer",      l: "🚗 Asignar Chofer",  c: listoParaChofer.length },
+              { k: "recoleccion", l: "🛒 Recolección",     c: listoRecoleccion.length },
+              { k: "recolectado", l: "📦 Recolectado",     c: recolectados.length },
             ].map(t => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: tab === t.k ? "#fff" : "transparent", boxShadow: tab === t.k ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: tab === t.k ? 700 : 500, fontFamily: "inherit", color: tab === t.k ? "#1A2744" : "#6B7280", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                 {t.l}{t.c > 0 && <span style={{ background: tab === t.k ? "#1A2744" : "#D1D5DB", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 8, fontWeight: 700 }}>{t.c}</span>}
@@ -3226,6 +3340,7 @@ export default function App() {
           </div>
         </div>
         {tab === "pendientes" && <PendientesTab />}
+        {tab === "chofer" && <AsignarChofer />}
         {tab === "recoleccion" && <Recoleccion />}
         {tab === "recolectado" && (
           <div>
