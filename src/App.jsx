@@ -16,11 +16,16 @@ async function load() {
 
 async function save(d) {
   try {
-    await setDoc(DOC_REF(), { payload: JSON.stringify(d), updatedAt: Date.now() });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); // always backup
+    const payload = JSON.stringify(d);
+    const sizeKB = Math.round(payload.length / 1024);
+    if (sizeKB > 900) {
+      console.warn("Payload too large:", sizeKB, "KB");
+    }
+    await setDoc(DOC_REF(), { payload, updatedAt: Date.now(), sizeKB });
+    localStorage.setItem(STORAGE_KEY, payload);
     return true;
   } catch(e) {
-    console.error("Firebase save error:", e);
+    console.error("Firebase save error:", e.code, e.message);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); return "local"; } catch {}
     return false;
   }
@@ -435,7 +440,13 @@ export default function App() {
     return { total: src.length, activos: act.length, deuda, pend: pend.length, credP };
   }, [data, roleFantasmas]);
 
-  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F0F2F5", fontFamily: "'DM Sans', sans-serif" }}><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style><div style={{ width: 36, height: 36, border: "3px solid #E5E7EB", borderTopColor: "#1A2744", borderRadius: "50%", animation: "spin .7s linear infinite" }} /></div>;
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F0F2F5", fontFamily: "'DM Sans', sans-serif", gap: 16 }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ width: 36, height: 36, border: "3px solid #E5E7EB", borderTopColor: "#1A2744", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+      <div style={{ fontSize: 12, color: "#6B7280" }}>Conectando con Firebase...</div>
+    </div>
+  );
 
   // ============ LOGIN SCREEN ============
   if (!role) {
@@ -5768,7 +5779,7 @@ export default function App() {
         </span>
         {/* Save status indicator */}
         {saveStatus === "saving" && <span style={{ fontSize: 9, color: "#94A3B8", flexShrink: 0 }}>💾...</span>}
-        {saveStatus === "error" && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>⚠️ Sin conexión</span>}
+        {saveStatus === "error" && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>❌ Firebase error</span>}
         {saveStatus === "local" && <span style={{ fontSize: 9, background: "#D97706", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>⚠️ Solo local</span>}
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
