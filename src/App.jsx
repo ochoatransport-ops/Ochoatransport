@@ -321,7 +321,7 @@ const ROLE_NAV = {
 };
 
 export default function App() {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(init());
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(() => {
     try { return localStorage.getItem("ot_role") || null; } catch { return null; }
@@ -428,8 +428,12 @@ export default function App() {
   const prevDataRef = useRef(null);
 
   useEffect(() => {
+    // Safety timeout — if Firebase takes too long, show empty app
+    const timeout = setTimeout(() => { setLoading(false); }, 8000);
+
     // Initial load from Firestore
     loadAll().then(d => {
+      clearTimeout(timeout);
       const APP_VERSION = 3;
       if ((d._appVersion || 0) < APP_VERSION) {
         // MIGRATE: don't wipe existing data, just update version and save to new structure
@@ -528,6 +532,7 @@ export default function App() {
     });
 
     return () => {
+      clearTimeout(timeout);
       unsubFantasmas();
       unsubMeta();
       unsubFinanzas();
