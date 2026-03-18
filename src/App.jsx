@@ -425,7 +425,7 @@ export default function App() {
     });
 
     // Real-time listener — syncs fantasmas changes from other users instantly
-    const unsubscribe = onSnapshot(collection(db, "fantasmas"), (snap) => {
+    const unsubFantasmas = onSnapshot(collection(db, "fantasmas"), (snap) => {
       const remoteFantasmas = snap.docs.map(d => d.data());
       setData(prev => {
         if (!prev) return prev;
@@ -435,7 +435,73 @@ export default function App() {
       });
     }, (err) => console.error("Realtime listener error:", err));
 
-    return () => unsubscribe();
+    // Real-time listeners for config documents
+    const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
+      if (!snap.exists()) return;
+      const meta = snap.data();
+      setData(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev,
+          nextId: meta.nextId ?? prev.nextId,
+          vendedores: meta.vendedores ?? prev.vendedores,
+          clientes: meta.clientes ?? prev.clientes,
+          proveedoresList: meta.proveedoresList ?? prev.proveedoresList,
+          provUbicaciones: meta.provUbicaciones ?? prev.provUbicaciones,
+          proveedoresInfo: meta.proveedoresInfo ?? prev.proveedoresInfo,
+        };
+        prevDataRef.current = updated;
+        return updated;
+      });
+    });
+
+    const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
+      if (!snap.exists()) return;
+      const fin = snap.data();
+      setData(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev,
+          gastosAdmin: fin.gastosAdmin ?? prev.gastosAdmin,
+          gastosUSA: fin.gastosUSA ?? prev.gastosUSA,
+          gastosBodega: fin.gastosBodega ?? prev.gastosBodega,
+          transferencias: fin.transferencias ?? prev.transferencias,
+          adelantosAdmin: fin.adelantosAdmin ?? prev.adelantosAdmin,
+        };
+        prevDataRef.current = updated;
+        return updated;
+      });
+    });
+
+    const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
+      if (!snap.exists()) return;
+      setData(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
+        prevDataRef.current = updated;
+        return updated;
+      });
+    });
+
+    const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
+      if (!snap.exists()) return;
+      const c = snap.data();
+      setData(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev,
+          cuentasPorPagar: c.cuentasPorPagar ?? prev.cuentasPorPagar,
+          cuentasPorCobrarEmp: c.cuentasPorCobrarEmp ?? prev.cuentasPorCobrarEmp,
+        };
+        prevDataRef.current = updated;
+        return updated;
+      });
+    });
+
+    return () => {
+      unsubFantasmas();
+      unsubMeta();
+      unsubFinanzas();
+      unsubColchon();
+      unsubCuentas();
+    };
   }, []);
 
   const [saveStatus, setSaveStatus] = useState("ok");
