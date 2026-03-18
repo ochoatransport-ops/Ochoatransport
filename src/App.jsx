@@ -277,7 +277,17 @@ export default function App() {
     if ((d.nextId || 0) < 2800) { d.nextId = 2800; }
     setData(d); save(d); setLoading(false);
   }); }, []);
-  const persist = useCallback(nd => { setData(nd); save(nd); }, []);
+  const [saveStatus, setSaveStatus] = useState("ok"); // "ok" | "saving" | "error" | "local"
+  const persist = useCallback(nd => {
+    setData(nd);
+    setSaveStatus("saving");
+    save(nd).then(result => {
+      if (result === true) setSaveStatus("ok");
+      else if (result === "local") setSaveStatus("local");
+      else setSaveStatus("error");
+      setTimeout(() => setSaveStatus("ok"), 3000);
+    });
+  }, []);
 
   // ---- DATA OPS ----
   const addF = (form) => {
@@ -5756,6 +5766,10 @@ export default function App() {
         <span style={{ background: "rgba(255,255,255,.1)", padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {navItems.find(n => n.k === view)?.l || ROLE_NAMES[role]}
         </span>
+        {/* Save status indicator */}
+        {saveStatus === "saving" && <span style={{ fontSize: 9, color: "#94A3B8", flexShrink: 0 }}>💾...</span>}
+        {saveStatus === "error" && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>⚠️ Sin conexión</span>}
+        {saveStatus === "local" && <span style={{ fontSize: 9, background: "#D97706", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>⚠️ Solo local</span>}
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {stats.pend > 0 && <span style={{ background: "#DC2626", color: "#fff", padding: "1px 7px", borderRadius: 8, fontSize: 9, fontWeight: 600 }}>{stats.pend}</span>}
