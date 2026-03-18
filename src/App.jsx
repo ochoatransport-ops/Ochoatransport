@@ -248,16 +248,8 @@ export default function App() {
 
   useEffect(() => { load().then(d => {
     // VERSION CHECK — solo migra si falta _appVersion, no borra datos existentes
-    const APP_VERSION = 2;
+    const APP_VERSION = 3;
     if ((d._appVersion || 0) < APP_VERSION) {
-      // Si ya tiene fantasmas/clientes, solo actualiza la versión, no borra nada
-      if (d.fantasmas && d.fantasmas.length > 0) {
-        d._appVersion = APP_VERSION;
-        if ((d.nextId || 0) < 2800) d.nextId = 2800;
-        setData(d); save(d); setLoading(false);
-        return;
-      }
-      // Solo resetea si realmente está vacío
       const fresh = init();
       fresh._appVersion = APP_VERSION;
       setData(fresh); save(fresh); setLoading(false);
@@ -271,7 +263,7 @@ export default function App() {
     // Sync dineroStatus for pedidos with payments
     d.fantasmas = d.fantasmas.map(f => {
       const mercPagado = f.clientePago;
-      const fletePagado = f.fletePagado || !f.costoFlete;
+      const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
       if (mercPagado && fletePagado && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
       if (mercPagado && !fletePagado && !["TODO_PAGADO", "FANTASMA_PAGADO", "DINERO_USA", "COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
       if (!mercPagado && fletePagado && f.costoFlete > 0 && !["TODO_PAGADO", "FLETE_PAGADO", "DINERO_USA", "COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
@@ -359,7 +351,7 @@ export default function App() {
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
     const mercPagado = f.clientePago;
-    const fletePagado = f.fletePagado || !f.costoFlete;
+    const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
     if (mercPagado && fletePagado) return "TODO_PAGADO";
     if (mercPagado) return "FANTASMA_PAGADO";
     if (fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
@@ -422,7 +414,7 @@ export default function App() {
     if (fEst !== "ALL") list = list.filter(f => f.estado === fEst);
     if (fPagoMerc === "pagado") list = list.filter(f => f.clientePago);
     if (fPagoMerc === "pendiente") list = list.filter(f => !f.clientePago);
-    if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado || !f.costoFlete);
+    if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
     if (fPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && f.costoFlete > 0);
     return list;
   }, [roleFantasmas, search, fEst, fPagoMerc, fPagoFlete]);
@@ -834,7 +826,7 @@ export default function App() {
         })()}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
           <Btn v="secondary" onClick={() => setShowNew(false)}>Cancelar</Btn>
-          <Btn disabled={!allClientes.includes(f.cliente) || !f.descripcion || !allProveedores.includes(f.proveedor) || !TIPOS_MERCANCIA.includes(f.tipoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
+          <Btn disabled={!allClientes.includes(f.cliente) || !allProveedores.includes(f.proveedor) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
             const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
             const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
             const precioVentaUnit = esPieza ? (parseFloat(f.precioVenta) || 0) : 0;
@@ -1135,7 +1127,20 @@ export default function App() {
     const colC = colPct >= 70 ? "#059669" : colPct >= 30 ? "#D97706" : "#DC2626";
 
     // Bodega TJ cash (separated USD/MXN)
-    const tjMovs = data.gastosBodega || [];
+    // Filter out orphaned entries - payments linked to deleted pedidos
+    const fantasmaIds = new Set(data.fantasmas.map(f => f.id));
+    const tjMovs = (data.gastosBodega || []).filter(g => {
+      // Keep manual gastos (not linked to a pedido)
+      if (!g.concepto) return true;
+      const conceptoUpper = (g.concepto || "").toUpperCase();
+      // If it mentions a folio, check the pedido exists
+      const folioMatch = conceptoUpper.match(/F-(\d+)/);
+      if (folioMatch) {
+        const folioId = `F-${folioMatch[1]}`;
+        return fantasmaIds.has(folioId);
+      }
+      return true;
+    });
     const tjUSD = tjMovs.filter(g => g.moneda !== "MXN");
     const tjMXN = tjMovs.filter(g => g.moneda === "MXN");
     const saldoTjUSD = tjUSD.filter(g => g.tipoMov === "ingreso").reduce((s, g) => s + (g.monto || 0), 0) - tjUSD.filter(g => g.tipoMov !== "ingreso").reduce((s, g) => s + (g.monto || 0), 0);
@@ -1384,7 +1389,7 @@ export default function App() {
     if (bEstado !== "ALL") list = list.filter(f => f.estado === bEstado);
     if (bPagoMerc === "pagado") list = list.filter(f => f.clientePago);
     if (bPagoMerc === "pendiente") list = list.filter(f => !f.clientePago);
-    if (bPagoFlete === "pagado") list = list.filter(f => f.fletePagado || !f.costoFlete);
+    if (bPagoFlete === "pagado") list = list.filter(f => f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
     if (bPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido));
     if (bSearch) { const s = bSearch.toLowerCase().trim(); const sNum = s.replace(/[^0-9]/g, ""); list = list.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor||"").toLowerCase().includes(s) || (f.vendedor||"").toLowerCase().includes(s) || (f.tipoMercancia||"").toLowerCase().includes(s)); }
 
@@ -2420,7 +2425,7 @@ export default function App() {
 
     const pendientesPago = data.fantasmas.filter(f => f.estado !== "CERRADO" && (!f.clientePago || (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido))));
     const totalPorCobrarMerc = pendientesPago.reduce((s, f) => s + (f.clientePago ? 0 : (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
-    const totalPorCobrarFlete = pendientesPago.reduce((s, f) => s + (f.fletePagado || !f.costoFlete ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
+    const totalPorCobrarFlete = pendientesPago.reduce((s, f) => s + (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
     const selCount = Object.keys(selPedidos).filter(k => selPedidos[k]).length;
 
     const marcarSobreEnviado = (origen) => {
@@ -2535,7 +2540,7 @@ export default function App() {
             <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>💸 Pendientes de pago ({pendientesPago.length})</div>
             {pendientesPago.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0)).map(f => {
               const dm = f.clientePago ? 0 : (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0);
-              const df = f.fletePagado || !f.costoFlete ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0);
+              const df = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0);
               return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ display: "flex", gap: 10, fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}{df > 0 && <span style={{ color: "#2563EB", fontWeight: 600 }}>🚛 {fmt(df)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
             })}
           </div>
@@ -3639,7 +3644,7 @@ export default function App() {
                 ✅ Entregados al cliente ({entregados.length})
               </div>
               {entregados.map(f => {
-                const pagado = f.clientePago && (f.fletePagado || !f.costoFlete);
+                const pagado = f.clientePago && (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
                 const dias = !pagado ? diasHabiles(f.fechaEntrega || f.fechaActualizacion) : 0;
                 const autoUrgente = !pagado && dias >= 3;
                 if (autoUrgente && !f.urgente) updF(f.id, { urgente: true });
@@ -3950,7 +3955,7 @@ export default function App() {
               {(() => {
                 const isMerc = pagoTab === "mercancia";
                 const allPedidos = dfFantasmas.filter(f => f.estado !== "CERRADO");
-                const pagados = allPedidos.filter(f => isMerc ? f.clientePago : (f.fletePagado || !f.costoFlete));
+                const pagados = allPedidos.filter(f => isMerc ? f.clientePago : (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido)));
                 const pendientes = allPedidos.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && f.costoFlete > 0));
                 const totalPag = isMerc ? totalCobradoMerc : totalCobradoFlete;
                 const totalPen = isMerc ? totalPendMerc : totalPendFlete;
@@ -4196,7 +4201,7 @@ export default function App() {
               {showCobro && (
                 <Modal title={`💰 Registrar pago de ${cobForm.tipo === "mercancia" ? "mercancía (fantasma)" : "flete"}`} onClose={() => setShowCobro(false)} w={500}>
                   <Fld label="Buscar pedido"><div style={{ position: "relative" }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={cobSearch} onChange={e => setCobSearch(e.target.value)} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />{cobSearch && <button onClick={() => setCobSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 12 }}>✕</button>}</div></Fld>
-                  <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 8, border: "1px solid #E5E7EB", borderRadius: 8 }}>{(() => { const isMerc = cobForm.tipo === "mercancia"; const pf = data.fantasmas.filter(f => { if (f.estado === "CERRADO") return false; if (isMerc && f.clientePago) return false; if (!isMerc && (f.fletePagado || !f.costoFlete)) return false; if (cobSearch) { const s = cobSearch.toLowerCase(); return f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s); } return true; }); if (pf.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes</div>; return pf.map(f => { const d = isMerc ? (f.costoMercancia-(f.abonoMercancia||0)) : (f.costoFlete-(f.abonoFlete||0)); const sel = cobForm.pedidoId === f.id; return <div key={f.id} onClick={() => { setCobForm({...cobForm, pedidoId: f.id, monto: String(d)}); setCobSearch(""); }} style={{ padding: "8px 12px", cursor: "pointer", background: sel ? "#EFF6FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #2563EB" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background="#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background="#fff"; }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", fontWeight: 700 }}>{f.id}</span><strong style={{ fontSize: 11 }}>{f.cliente}</strong>{sel && <span style={{ fontSize: 8, background: "#2563EB", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>✓</span>}<span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 11, color: isMerc ? "#DC2626" : "#2563EB" }}>Debe: {fmt(d)}</span></div><div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion} · {f.cantBultos||1} {f.empaque||"bulto"}{(f.cantBultos||1)>1?"s":""}</div></div>; }); })()}</div>
+                  <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 8, border: "1px solid #E5E7EB", borderRadius: 8 }}>{(() => { const isMerc = cobForm.tipo === "mercancia"; const pf = data.fantasmas.filter(f => { if (f.estado === "CERRADO") return false; if (isMerc && f.clientePago) return false; if (!isMerc && (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido))) return false; if (cobSearch) { const s = cobSearch.toLowerCase(); return f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s); } return true; }); if (pf.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes</div>; return pf.map(f => { const d = isMerc ? (f.costoMercancia-(f.abonoMercancia||0)) : (f.costoFlete-(f.abonoFlete||0)); const sel = cobForm.pedidoId === f.id; return <div key={f.id} onClick={() => { setCobForm({...cobForm, pedidoId: f.id, monto: String(d)}); setCobSearch(""); }} style={{ padding: "8px 12px", cursor: "pointer", background: sel ? "#EFF6FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #2563EB" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background="#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background="#fff"; }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", fontWeight: 700 }}>{f.id}</span><strong style={{ fontSize: 11 }}>{f.cliente}</strong>{sel && <span style={{ fontSize: 8, background: "#2563EB", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>✓</span>}<span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 11, color: isMerc ? "#DC2626" : "#2563EB" }}>Debe: {fmt(d)}</span></div><div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion} · {f.cantBultos||1} {f.empaque||"bulto"}{(f.cantBultos||1)>1?"s":""}</div></div>; }); })()}</div>
                   {cobForm.pedidoId && (() => { const pf = data.fantasmas.find(x => x.id === cobForm.pedidoId); if (!pf) return null; const isMerc = cobForm.tipo === "mercancia"; const tot = isMerc ? pf.costoMercancia : (pf.costoFlete||0); const ab = isMerc ? (pf.abonoMercancia||0) : (pf.abonoFlete||0); return <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 8, border: "1px solid #E5E7EB", fontSize: 11 }}><strong>{pf.id}</strong> · {pf.cliente} · Total: {fmt(tot)} · Abonado: {fmt(ab)} · <strong style={{ color: "#DC2626" }}>Debe: {fmt(tot-ab)}</strong></div>; })()}
                   <div style={{ display: "flex", gap: 8 }}><Fld label="🇺🇸 Monto en USD"><Inp type="number" value={cobForm.monto} onChange={e => setCobForm({...cobForm, monto: e.target.value})} placeholder="0.00" /></Fld><Fld label="Fecha"><Inp type="date" value={cobForm.fecha} onChange={e => setCobForm({...cobForm, fecha: e.target.value})} /></Fld></div>
                   <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
@@ -5845,6 +5850,12 @@ export default function App() {
         {role === "admin" && <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}><button onClick={() => { setView(prevView); setSelId(null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "main" ? "2px solid #1A2744" : "1px solid #D1D5DB", background: view === "main" ? "#EFF6FF" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "main" ? 700 : 500, fontFamily: "inherit", color: view === "main" ? "#1A2744" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>📊 Dashboard</button><button onClick={() => { setView("finanzas"); setSelId(null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "finanzas" ? "2px solid #059669" : "1px solid #D1D5DB", background: view === "finanzas" ? "#ECFDF5" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "finanzas" ? 700 : 500, fontFamily: "inherit", color: view === "finanzas" ? "#065F46" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>💰 Finanzas</button></div>}
       </div>
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "18px 24px" }}>
+        {/* Botón atrás — aparece en todas las pantallas excepto home */}
+        {view !== "main" && view !== "detail" && (
+          <button onClick={() => { setPrevView(view); setView("main"); setSelId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
+            ← Inicio
+          </button>
+        )}
         {view === "main" && role === "admin" && <Dashboard />}
         {view === "main" && role !== "admin" && <ListView />}
         {view === "list" && <ListView />}
