@@ -1,4 +1,30 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { db } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
+const STORAGE_KEY = "fantasmas-v4-data";
+const DOC_REF = () => doc(db, "app", "data");
+
+async function load() {
+  try {
+    // Try Firebase first
+    const snap = await getDoc(DOC_REF());
+    if (snap.exists()) return snap.data().payload ? JSON.parse(snap.data().payload) : init();
+  } catch(e) { console.error("Firebase load error:", e); }
+  // Fallback to localStorage
+  try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
+  return init();
+}
+
+async function save(d) {
+  try {
+    await setDoc(DOC_REF(), { payload: JSON.stringify(d), updatedAt: Date.now() });
+  } catch(e) {
+    console.error("Firebase save error:", e);
+    // Fallback to localStorage
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+  }
+}
 
 const STORAGE_KEY = "fantasmas-v4-data";
 const ESTADOS = { PEDIDO: "Pedido generado", RECOLECTADO: "Recolectado — en camino", BODEGA_TJ: "En bodega TJ", ENTREGADO: "Entregado", CERRADO: "Cerrado" };
@@ -31,8 +57,7 @@ function diasHabiles(fechaStr) {
   return count;
 }
 const init = () => ({ fantasmas: [], nextId: 2800, colchon: { montoOriginal: 0, saldoActual: 0, movimientos: [] }, vendedores: [] });
-async function load() { try { const r = await window.storage.get(STORAGE_KEY); return r ? JSON.parse(r.value) : init(); } catch { return init(); } }
-async function save(d) { try { await window.storage.set(STORAGE_KEY, JSON.stringify(d)); } catch(e) { console.error(e); } }
+
 
 const I = {
   Plus: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>,
