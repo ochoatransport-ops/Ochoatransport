@@ -726,7 +726,7 @@ export default function App() {
         setLoginError("Usuario o contraseña incorrectos.");
       }
     };
-    const [remember, setRemember] = React.useState(false);
+    const [remember, setRemember] = useState(false);
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #1A2744 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", padding: 16 }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
