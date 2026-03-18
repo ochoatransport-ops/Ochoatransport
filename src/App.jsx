@@ -7,11 +7,9 @@ const DOC_REF = () => doc(db, "app", "data");
 
 async function load() {
   try {
-    // Try Firebase first
     const snap = await getDoc(DOC_REF());
     if (snap.exists()) return snap.data().payload ? JSON.parse(snap.data().payload) : init();
   } catch(e) { console.error("Firebase load error:", e); }
-  // Fallback to localStorage
   try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
   return init();
 }
@@ -19,10 +17,12 @@ async function load() {
 async function save(d) {
   try {
     await setDoc(DOC_REF(), { payload: JSON.stringify(d), updatedAt: Date.now() });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); // always backup
+    return true;
   } catch(e) {
     console.error("Firebase save error:", e);
-    // Fallback to localStorage
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); return "local"; } catch {}
+    return false;
   }
 }
 
@@ -243,9 +243,17 @@ export default function App() {
 
 
   useEffect(() => { load().then(d => {
-    // VERSION CHECK — incrementar APP_VERSION fuerza reset de datos en Firestore
+    // VERSION CHECK — solo migra si falta _appVersion, no borra datos existentes
     const APP_VERSION = 2;
     if ((d._appVersion || 0) < APP_VERSION) {
+      // Si ya tiene fantasmas/clientes, solo actualiza la versión, no borra nada
+      if (d.fantasmas && d.fantasmas.length > 0) {
+        d._appVersion = APP_VERSION;
+        if ((d.nextId || 0) < 2800) d.nextId = 2800;
+        setData(d); save(d); setLoading(false);
+        return;
+      }
+      // Solo resetea si realmente está vacío
       const fresh = init();
       fresh._appVersion = APP_VERSION;
       setData(fresh); save(fresh); setLoading(false);
