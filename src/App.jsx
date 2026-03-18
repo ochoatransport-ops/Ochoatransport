@@ -2734,7 +2734,6 @@ export default function App() {
               <Btn onClick={regresarAPendientes} style={{ background: "#DC2626" }}>💵 ← A pendientes</Btn>
               <Btn onClick={marcarRecolectado} style={{ background: "#6366F1" }}>✅ Marcar recolectado</Btn>
             </div>
-            </div>
           </div>
         )}
       </div>
@@ -2867,12 +2866,30 @@ export default function App() {
 
         {/* Sticky action bar */}
         {selCount > 0 && (
-          <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)", marginTop: 16 }}>
+          <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)", marginTop: 16, flexWrap: "wrap", gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{selCount} seleccionado{selCount > 1 ? "s" : ""}</span>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Btn v="secondary" sz="sm" onClick={() => setSelSobres({})}>Deseleccionar</Btn>
               {selConSobre && <Btn onClick={marcarDineroUSA} style={{ background: "#059669" }}>💵 Sobre recibido</Btn>}
               <Btn onClick={marcarColchon} disabled={colchonSaldo <= 0} style={{ background: colchonSaldo <= 0 ? "#9CA3AF" : "#D97706" }} title={colchonSaldo <= 0 ? "Sin fondos en colchón" : `Colchón: ${fmt(colchonSaldo)}`}>🛡️ Colchón{colchonSaldo > 0 ? ` (${fmt(colchonSaldo)})` : ""}</Btn>
+              <Btn onClick={() => {
+                const ids = Object.keys(selSobres).filter(k => selSobres[k]);
+                if (!ids.length) return;
+                let nd = { ...data };
+                ids.forEach(fId => {
+                  nd = { ...nd, fantasmas: nd.fantasmas.map(f => f.id !== fId ? f : {
+                    ...f,
+                    estado: "PEDIDO",
+                    dineroStatus: "SIN_FONDOS",
+                    choferAsignado: null,
+                    usaColchon: false,
+                    fechaActualizacion: today(),
+                    historial: [...(f.historial || []), { fecha: today(), accion: "↩ Sobre retornado a TJ — pedido cancelado", quien: role }]
+                  }) };
+                });
+                persist(nd);
+                setSelSobres({});
+              }} style={{ background: "#DC2626" }}>↩ Retornar a PEDIDOS</Btn>
             </div>
           </div>
         )}
