@@ -29,6 +29,22 @@ async function loadAll() {
       getDoc(configDoc("bitacora")),
     ]);
 
+    const hasNewData = metaSnap.exists() || fantasmasSnap.docs.length > 0;
+
+    // No new structure yet — try reading from old app/data document
+    if (!hasNewData) {
+      try {
+        const oldSnap = await getDoc(doc(db, "app", "data"));
+        if (oldSnap.exists() && oldSnap.data().payload) {
+          const old = JSON.parse(oldSnap.data().payload);
+          console.log("Migrating from old format:", old.fantasmas?.length, "pedidos");
+          return old;
+        }
+      } catch(e) { console.warn("Old format not found:", e); }
+      try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
+      return init();
+    }
+
     const fantasmas = fantasmasSnap.docs.map(d => d.data());
     const meta      = metaSnap.exists()     ? metaSnap.data()     : {};
     const finanzas  = finanzasSnap.exists() ? finanzasSnap.data() : {};
@@ -63,7 +79,6 @@ async function loadAll() {
     };
   } catch(e) {
     console.error("Firebase loadAll error:", e);
-    // Fallback to localStorage
     try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {}
     return init();
   }
@@ -1731,17 +1746,32 @@ export default function App() {
     const addCliente = (name) => {
       if (!name) return;
       const n = name.toUpperCase();
-      if ((data.clientes || []).includes(n)) { alert("⚠️ El cliente \"" + n + "\" ya existe. Usa otro nombre."); return; }
-      const list = [...(data.clientes || []), n];
-      persist({ ...data, clientes: list });
+      const existing = data.clientes || [];
+      // Exact match — block
+      if (existing.includes(n)) { alert("⚠️ El cliente \"" + n + "\" ya existe."); return; }
+      // Similar match — warn
+      const similar = existing.filter(c => {
+        if (c.includes(n) || n.includes(c)) return true;
+        // Check word overlap
+        const words = n.split(" ").filter(w => w.length > 2);
+        return words.some(w => c.includes(w));
+      });
+      if (similar.length > 0) {
+        if (!window.confirm(`⚠️ Ya existen clientes con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
+      }
+      persist({ ...data, clientes: [...existing, n] });
       setShowNewCliente(false); setNewName("");
     };
     const addVendedor = (name) => {
       if (!name) return;
       const n = name.toUpperCase();
-      if ((data.vendedores || []).includes(n)) { alert("⚠️ El vendedor \"" + n + "\" ya existe. Usa otro nombre."); return; }
-      const list = [...(data.vendedores || []), n];
-      persist({ ...data, vendedores: list });
+      const existing = data.vendedores || [];
+      if (existing.includes(n)) { alert("⚠️ El vendedor \"" + n + "\" ya existe."); return; }
+      const similar = existing.filter(v => v.includes(n) || n.includes(v) || n.split(" ").filter(w => w.length > 2).some(w => v.includes(w)));
+      if (similar.length > 0) {
+        if (!window.confirm(`⚠️ Ya existen vendedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
+      }
+      persist({ ...data, vendedores: [...existing, n] });
       setShowNewVendedor(false); setNewName("");
     };
     const deleteCliente = (name) => {
@@ -1847,7 +1877,7 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Clientes & Vendedores</h2>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <div style={{ position: "relative", width: 160 }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Buscar..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
+            <div style={{ position: "relative", flex: "1 1 300px", maxWidth: 500 }}><span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 16 }}><I.Search /></span><input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Buscar cliente..." autoComplete="off" style={{ width: "100%", padding: "10px 14px 10px 38px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff", transition: "border-color .2s" }} onFocus={e => e.target.style.borderColor="#2563EB"} onBlur={e => e.target.style.borderColor="#E5E7EB"} />{cSearch && <button onClick={() => setCSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, fontFamily: "inherit" }}>✕</button>}</div>
             <Btn sz="sm" onClick={() => { setShowNewCliente(true); setNewName(""); }}><I.Plus /> Cliente</Btn>
             <Btn sz="sm" v="secondary" onClick={() => { setShowNewVendedor(true); setNewName(""); }}><I.Plus /> Vendedor</Btn>
           </div>
@@ -2159,8 +2189,21 @@ export default function App() {
 
     const saveProv = (old, form) => {
       const nombre = form.nombre.toUpperCase();
-      if (!old && Object.keys(data.proveedoresInfo || {}).includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe. Usa otro nombre."); return; }
-      if (old && old !== nombre && Object.keys(data.proveedoresInfo || {}).includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe. Usa otro nombre."); return; }
+      const provList = Object.keys(data.proveedoresInfo || {});
+      // Exact match — block
+      if (!old && provList.includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
+      if (old && old !== nombre && provList.includes(nombre)) { alert("⚠️ El proveedor \"" + nombre + "\" ya existe."); return; }
+      // Similar match — warn (only when adding new)
+      if (!old) {
+        const similar = provList.filter(p => {
+          if (p.includes(nombre) || nombre.includes(p)) return true;
+          const words = nombre.split(" ").filter(w => w.length > 2);
+          return words.some(w => p.includes(w));
+        });
+        if (similar.length > 0) {
+          if (!window.confirm(`⚠️ Ya existen proveedores con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${nombre}"?`)) return;
+        }
+      }
       const contacto = (form.contacto || "").toUpperCase();
       const newInfo = { ...(data.proveedoresInfo || {}) };
       if (old && old !== nombre) delete newInfo[old];
@@ -2224,7 +2267,7 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Proveedores</h2>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <div style={{ position: "relative", width: 180 }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Buscar..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
+            <div style={{ position: "relative", flex: "1 1 300px", maxWidth: 500 }}><span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 16 }}><I.Search /></span><input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Buscar proveedor..." autoComplete="off" style={{ width: "100%", padding: "10px 14px 10px 38px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff", transition: "border-color .2s" }} onFocus={e => e.target.style.borderColor="#2563EB"} onBlur={e => e.target.style.borderColor="#E5E7EB"} />{pSearch && <button onClick={() => setPSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, fontFamily: "inherit" }}>✕</button>}</div>
             <Btn onClick={() => { setShowNewProv(true); setProvForm({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" }); }}><I.Plus /> Nuevo Proveedor</Btn>
           </div>
         </div>
