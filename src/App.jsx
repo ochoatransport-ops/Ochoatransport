@@ -31,7 +31,6 @@ async function save(d) {
   }
 }
 
-const STORAGE_KEY = "fantasmas-v4-data";
 const ESTADOS = { PEDIDO: "Pedido generado", RECOLECTADO: "Recolectado — en camino", BODEGA_TJ: "En bodega TJ", ENTREGADO: "Entregado", CERRADO: "Cerrado" };
 const ESTADO_KEYS = Object.keys(ESTADOS);
 const ESTADO_COLORS = { PEDIDO: { bg: "#FEF3C7", text: "#92400E", dot: "#F59E0B" }, RECOLECTADO: { bg: "#E0E7FF", text: "#3730A3", dot: "#6366F1" }, BODEGA_TJ: { bg: "#A7F3D0", text: "#065F46", dot: "#34D399" }, ENTREGADO: { bg: "#BBF7D0", text: "#166534", dot: "#22C55E" }, CERRADO: { bg: "#E5E7EB", text: "#374151", dot: "#6B7280" } };
