@@ -376,7 +376,6 @@ export default function App() {
   const [dashFCli2, setDashFCli2] = useState("ALL");
   const [dashFProv2, setDashFProv2] = useState("ALL");
   const [bSearch2, setBSearch2] = useState("");
-  const [vSearch2, setVSearch2] = useState("");
   const [cuentasTab2, setCuentasTab2] = useState("cobrar");
   const [cxpExpand2, setCxpExpand2] = useState(null);
   const [corteExp, setCorteExp] = useState(null);
@@ -958,7 +957,21 @@ export default function App() {
           <Fld label="Tipo mercancía *">
             <AutoInp value={f.tipoMercancia} onChange={v => sF({ ...f, tipoMercancia: v })} options={TIPOS_MERCANCIA} placeholder="BUSCAR TIPO..." strict />
           </Fld>
-          <div style={{ gridColumn: "span 2" }}><Fld label="Descripción mercancía *"><Inp value={f.descripcion} onChange={e => sF({ ...f, descripcion: e.target.value.toUpperCase() })} placeholder="¿QUÉ PIDIÓ?" style={{ textTransform: "uppercase" }} /></Fld></div>
+          <div style={{ gridColumn: "span 2" }}>
+            <Fld label="Descripción mercancía">
+              {f.descripcion === "DESCONOCIDO" ? (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
+                  <button type="button" onClick={() => sF({ ...f, descripcion: "" })} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: "#6B7280" }}>✕ Cambiar</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Inp value={f.descripcion} onChange={e => sF({ ...f, descripcion: e.target.value.toUpperCase() })} placeholder="¿QUÉ PIDIÓ? (opcional)" style={{ textTransform: "uppercase", flex: 1 }} />
+                  <button type="button" onClick={() => sF({ ...f, descripcion: "DESCONOCIDO" })} title="Marcar como desconocido" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #FDE68A", background: "#FEF3C7", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#92400E", fontWeight: 700, whiteSpace: "nowrap" }}>❓</button>
+                </div>
+              )}
+            </Fld>
+          </div>
 
           <Fld label="Empaque">
             {f.empaque === "Desconocido" ? (
@@ -1323,6 +1336,22 @@ export default function App() {
             )}
             {ef.pedidoEspecial && <Fld label="Flete USD"><Inp type="number" value={ef.costoFlete} onChange={e => setEf({ ...ef, costoFlete: e.target.value })} /></Fld>}
             <div style={{ gridColumn: "1/-1" }}><Fld label="Notas"><Inp value={ef.notas} onChange={e => setEf({ ...ef, notas: e.target.value })} /></Fld></div>
+            {/* Comisión toggle */}
+            {(() => {
+              const base = ef.pedidoEspecial && ef.precioVenta ? parseFloat(ef.precioVenta) : (parseFloat(ef.costoMercancia) || 0);
+              const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
+              if (comPct === 0) return null;
+              const comCalc = Math.round(base * comPct * 100) / 100;
+              return (
+                <div style={{ gridColumn: "1/-1" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: ef.cobrarComision ? "#F5F3FF" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: ef.cobrarComision ? "2px solid #7C3AED" : "1px solid #E5E7EB" }}>
+                    <input type="checkbox" checked={ef.cobrarComision || false} onChange={e => setEf({ ...ef, cobrarComision: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#7C3AED" }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: ef.cobrarComision ? "#7C3AED" : "#6B7280" }}>💰 Cobrar comisión ({comPct * 100}%)</span>
+                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: ef.cobrarComision ? "#7C3AED" : "#9CA3AF", fontSize: 14, marginLeft: "auto" }}>{fmt(comCalc)}</span>
+                  </label>
+                </div>
+              );
+            })()}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
             <Btn v="secondary" onClick={() => setEd(false)}>Cancelar</Btn>
@@ -1330,7 +1359,25 @@ export default function App() {
               const costoReal = parseFloat(ef.costoMercancia) || 0;
               const precioV = ef.pedidoEspecial && ef.precioVenta ? parseFloat(ef.precioVenta) : costoReal;
               const cf = parseFloat(ef.costoFlete) || 0;
-              updF(f.id, { ...ef, costoMercancia: precioV, costoReal: ef.pedidoEspecial ? costoReal : null, gananciaEspecial: ef.pedidoEspecial ? (precioV - costoReal) : null, pedidoEspecial: ef.pedidoEspecial || false, costoFlete: cf, cantBultos: parseInt(ef.cantBultos) || 1, costoDesconocido: costoReal > 0 ? false : f.costoDesconocido, fleteDesconocido: cf > 0 ? false : f.fleteDesconocido, totalVenta: precioV, dineroStatus: (f.costoDesconocido && costoReal > 0 && !f.soloRecoger) ? "SIN_FONDOS" : f.dineroStatus });
+              const comPct = precioV >= 10000 ? 0.005 : precioV >= 1000 ? 0.008 : 0;
+              const comCalc = Math.round(precioV * comPct * 100) / 100;
+              const cobrar = ef.cobrarComision && comPct > 0;
+              updF(f.id, {
+                ...ef,
+                costoMercancia: precioV,
+                costoReal: ef.pedidoEspecial ? costoReal : null,
+                gananciaEspecial: ef.pedidoEspecial ? (precioV - costoReal) : null,
+                pedidoEspecial: ef.pedidoEspecial || false,
+                costoFlete: cf,
+                cantBultos: parseInt(ef.cantBultos) || 1,
+                costoDesconocido: costoReal > 0 ? false : f.costoDesconocido,
+                fleteDesconocido: cf > 0 ? false : f.fleteDesconocido,
+                totalVenta: precioV + (cobrar ? comCalc : 0),
+                cobrarComision: cobrar,
+                comisionMonto: cobrar ? comCalc : 0,
+                comisionPendiente: cobrar,
+                dineroStatus: (f.costoDesconocido && costoReal > 0 && !f.soloRecoger) ? "SIN_FONDOS" : f.dineroStatus
+              });
               setEd(false);
             }}>Guardar</Btn>
           </div>
@@ -2751,7 +2798,7 @@ export default function App() {
   // ============ VENTAS ============
   const Ventas = () => {
     const [selPedidos, setSelPedidos] = useState({});
-    const vSearch = vSearch2; const setVSearch = setVSearch2;
+    const [vSearch, setVSearch] = useState("");
     const [vFiltro, setVFiltro] = useState("ALL");
     const [showSobreModal, setShowSobreModal] = useState(false);
 
@@ -4307,9 +4354,76 @@ export default function App() {
           {/* Sub-tabs */}
           <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 14 }}>
             <button onClick={() => setSubTab("clientes")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: subTab === "clientes" ? "#fff" : "transparent", boxShadow: subTab === "clientes" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: subTab === "clientes" ? 700 : 500, fontFamily: "inherit", color: subTab === "clientes" ? "#1A2744" : "#6B7280" }}>💰 Pagos Clientes</button>
+            <button onClick={() => setSubTab("comisiones")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: subTab === "comisiones" ? "#fff" : "transparent", boxShadow: subTab === "comisiones" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: subTab === "comisiones" ? 700 : 500, fontFamily: "inherit", color: subTab === "comisiones" ? "#7C3AED" : "#6B7280" }}>
+              💼 Comisiones{data.fantasmas.filter(f => f.comisionPendiente && !f.comisionCobrada && f.estado !== "CERRADO").length > 0 && <span style={{ background: "#7C3AED", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 8, fontWeight: 700, marginLeft: 4 }}>{data.fantasmas.filter(f => f.comisionPendiente && !f.comisionCobrada && f.estado !== "CERRADO").length}</span>}
+            </button>
             <button onClick={() => setSubTab("sobres")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: subTab === "sobres" ? "#fff" : "transparent", boxShadow: subTab === "sobres" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: subTab === "sobres" ? 700 : 500, fontFamily: "inherit", color: subTab === "sobres" ? "#7C3AED" : "#6B7280" }}>📨 Sobres</button>
             <button onClick={() => setSubTab("resumen")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: subTab === "resumen" ? "#fff" : "transparent", boxShadow: subTab === "resumen" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: subTab === "resumen" ? 700 : 500, fontFamily: "inherit", color: subTab === "resumen" ? "#1A2744" : "#6B7280" }}>📊 Resumen</button>
           </div>
+
+          {subTab === "comisiones" && (() => {
+            const pendientes = data.fantasmas.filter(f => f.comisionPendiente && !f.comisionCobrada && f.estado !== "CERRADO");
+            const cobradas = data.fantasmas.filter(f => f.comisionCobrada);
+            const totalPend = pendientes.reduce((s, f) => s + (f.comisionMonto || 0), 0);
+            const totalCob = cobradas.reduce((s, f) => s + (f.comisionMonto || 0), 0);
+            return (
+              <div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 140px", background: "#FEF3C7", borderRadius: 10, padding: "14px 18px", border: "2px solid #FDE68A" }}>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: "#92400E", textTransform: "uppercase" }}>💼 Pendientes</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#D97706" }}>{fmt(totalPend)}</div>
+                    <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pendientes.length} comisión{pendientes.length !== 1 ? "es" : ""}</div>
+                  </div>
+                  <div style={{ flex: "1 1 140px", background: "#ECFDF5", borderRadius: 10, padding: "14px 18px", border: "1px solid #A7F3D0" }}>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>✅ Cobradas</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalCob)}</div>
+                    <div style={{ fontSize: 9, color: "#9CA3AF" }}>{cobradas.length} cobrada{cobradas.length !== 1 ? "s" : ""}</div>
+                  </div>
+                </div>
+                {pendientes.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><div style={{ fontSize: 28, marginBottom: 8 }}>✅</div><p style={{ fontSize: 12 }}>No hay comisiones pendientes.</p></div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "#374151" }}>Comisiones pendientes de cobrar</div>
+                    {pendientes.map(f => (
+                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#fff", borderRadius: 8, border: "1px solid #E9D5FF", marginBottom: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
+                            <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                            <span style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
+                            Pedido: {fmt(f.costoMercancia)} · Comisión: {fmt(f.comisionMonto)}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#7C3AED" }}>{fmt(f.comisionMonto)}</div>
+                          <button onClick={() => {
+                            updF(f.id, { comisionCobrada: true, comisionPendiente: false, historial: [...(f.historial || []), { fecha: today(), accion: `💼 Comisión cobrada: ${fmt(f.comisionMonto)}`, quien: role }] });
+                          }} style={{ marginTop: 4, padding: "4px 10px", borderRadius: 6, border: "none", background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ Cobrada</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {cobradas.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 8 }}>Historial cobradas ({cobradas.length})</div>
+                    {cobradas.slice(0, 10).map(f => (
+                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB", marginBottom: 4, opacity: 0.7 }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", marginRight: 6 }}>{f.id}</span>
+                          <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
+                        </div>
+                        <span style={{ fontFamily: "monospace", fontSize: 11, color: "#059669", fontWeight: 700 }}>{fmt(f.comisionMonto)} ✓</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {subTab === "clientes" && (
             <div>
