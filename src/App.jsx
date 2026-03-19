@@ -316,7 +316,7 @@ const USERS = [
 const ROLE_NAV = {
   admin:    ["ventas", "bodegausa", "bodegatj", "bitacora", "clientes", "proveedores"],
   bodegatj: ["ventas", "bodegausa", "bodegatj", "bitacora", "clientes", "proveedores"],
-  usa:      ["bodegausa"],
+  usa:      ["bodegausa", "bitacora", "clientes", "proveedores"],
   vendedor: ["ventas", "bodegausa", "bodegatj", "bitacora", "clientes", "proveedores"],
 };
 
@@ -374,8 +374,6 @@ export default function App() {
   const [dashFProv2, setDashFProv2] = useState("ALL");
   const [bSearch2, setBSearch2] = useState("");
   const [vSearch2, setVSearch2] = useState("");
-  const [cSearch2, setCSearch2] = useState("");
-  const [pSearch2, setPSearch2] = useState("");
   const [cuentasTab2, setCuentasTab2] = useState("cobrar");
   const [cxpExpand2, setCxpExpand2] = useState(null);
   const [corteExp, setCorteExp] = useState(null);
@@ -775,6 +773,9 @@ export default function App() {
     ],
     usa: [
       { k: "bodegausa", emoji: "🇺🇸", title: "Bodega USA",   sub: "Recolección, proveedores, envíos a TJ", color: "#1E40AF", bg: "#EFF6FF", border: "#BFDBFE" },
+      { k: "bitacora",  emoji: "📒", title: "Bitácora",      sub: "Historial de todos los pedidos",              color: "#374151", bg: "#F9FAFB", border: "#D1D5DB" },
+      { k: "clientes",  emoji: "👥", title: "Clientes",      sub: "Clientes y vendedores",                      color: "#059669", bg: "#ECFDF5", border: "#A7F3D0" },
+      { k: "proveedores", emoji: "🏪", title: "Proveedores", sub: "Directorio de proveedores",                  color: "#7C3AED", bg: "#F5F3FF", border: "#E9D5FF" },
     ],
     vendedor: [
       { k: "ventas",    emoji: "📋", title: "Pedidos",       sub: "Crear pedidos, cobros y urgencias",     color: "#D97706", bg: "#FFF7ED", border: "#FED7AA" },
@@ -1766,7 +1767,7 @@ export default function App() {
   };
   const Clientes = () => {
     const [exp, setExp] = useState(null);
-    const cSearch = cSearch2; const setCSearch = setCSearch2;
+    const [cSearch, setCSearch] = useState("");
     const [cFiltro, setCFiltro] = useState("ALL"); // ALL, pendiente, pagado, moroso
     const [cSort, setCSort] = useState("saldo_desc"); // nombre_asc, nombre_desc, saldo_desc, saldo_asc, monto_desc, monto_asc
     const [pagoCliente, setPagoCliente] = useState(null);
@@ -2213,7 +2214,7 @@ export default function App() {
   // ============ PROVEEDORES ============
   const Proveedores = () => {
     const [exp, setExp] = useState(null);
-    const pSearch = pSearch2; const setPSearch = setPSearch2;
+    const [pSearch, setPSearch] = useState("");
     const [pFiltro, setPFiltro] = useState("ALL");
     const [pSort, setPSort] = useState("deuda_desc");
     const [pagoProv, setPagoProv] = useState(null);
@@ -4909,27 +4910,23 @@ export default function App() {
         {sortedMovs.length === 0 && (prevAdm.usd === 0 && prevAdm.mxn === 0) ? <p style={{ color: "#9CA3AF", fontSize: 11, textAlign: "center", padding: 30 }}>Sin movimientos.</p> : (
           <div style={{ overflowX: "auto" }}>
             {/* Excel-style table header */}
-            <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, background: "#1A2744", color: "#fff", borderRadius: "8px 8px 0 0", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, background: "#4B5563", color: "#fff", borderRadius: "8px 8px 0 0", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
               <div>Fecha</div>
               <div>Tipo</div>
               <div>Concepto</div>
-              <div style={{ textAlign: "right", color: "#86EFAC" }}>+ Entrada USD</div>
-              <div style={{ textAlign: "right", color: "#FCA5A5" }}>- Salida USD</div>
-              <div style={{ textAlign: "right", color: "#FDE68A" }}>+ Entrada MXN</div>
-              <div style={{ textAlign: "right", color: "#FCA5A5" }}>- Salida MXN</div>
+              <div style={{ textAlign: "right", color: "#86EFAC" }}>🇺🇸 USD</div>
+              <div style={{ textAlign: "right", color: "#FDE68A" }}>🇲🇽 MXN</div>
               <div></div>
             </div>
             <div style={{ border: "1px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
               {/* Saldo anterior row */}
               {periodoTipo !== "global" && (prevAdm.usd !== 0 || prevAdm.mxn !== 0) && (
-                <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "6px 10px", background: "#F9FAFB", borderBottom: "2px dashed #D1D5DB", fontSize: 11 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, padding: "6px 10px", background: "#F9FAFB", borderBottom: "2px dashed #D1D5DB", fontSize: 11 }}>
                   <div style={{ color: "#9CA3AF", fontSize: 9 }}>—</div>
                   <div style={{ fontSize: 9, color: "#6B7280", fontWeight: 600 }}>ANTERIOR</div>
                   <div style={{ color: "#6B7280", fontWeight: 600 }}>Saldo anterior al período</div>
                   <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: prevAdm.usd >= 0 ? "#059669" : "#DC2626" }}>{prevAdm.usd !== 0 ? fmt(prevAdm.usd) : ""}</div>
-                  <div></div>
                   <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: prevAdm.mxn >= 0 ? "#D97706" : "#DC2626" }}>{prevAdm.mxn !== 0 ? fmtMXN(prevAdm.mxn) : ""}</div>
-                  <div></div>
                   <div></div>
                 </div>
               )}
@@ -4940,30 +4937,22 @@ export default function App() {
                 const tipoLabel = isIng ? (m.origen ? `← ${m.origen === "BODEGA_USA" ? "USA" : "TJ"}` : "INGRESO") : m.destino !== "ADMIN" ? `→ ${dest?.l?.replace(/[🇺🇸🇲🇽💼]/g,"").trim() || m.destino}` : "GASTO";
                 const tipoColor = isIng ? "#059669" : "#DC2626";
                 return (
-                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "7px 10px", background: idx % 2 === 0 ? "#fff" : "#FAFAFA", borderBottom: "1px solid #F3F4F6", fontSize: 11, alignItems: "center" }}>
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, padding: "7px 10px", background: idx % 2 === 0 ? "#fff" : "#FAFAFA", borderBottom: "1px solid #F3F4F6", fontSize: 11, alignItems: "center" }}>
                     <div style={{ color: "#9CA3AF", fontSize: 9 }}>{fmtD(m.fecha)}</div>
-                    <div style={{ fontSize: 9, background: isIng ? "#D1FAE5" : "#FEE2E2", color: tipoColor, padding: "1px 5px", borderRadius: 3, fontWeight: 700, display: "inline-block" }}>{tipoLabel}</div>
+                    <div style={{ fontSize: 9, background: isIng ? "#D1FAE5" : "#FEE2E2", color: isIng ? "#065F46" : "#991B1B", padding: "1px 5px", borderRadius: 3, fontWeight: 700, display: "inline-block" }}>{tipoLabel}</div>
                     <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}{m.nota && <span style={{ color: "#9CA3AF", fontWeight: 400 }}> · {m.nota}</span>}</div>
-                    {/* USD entrada */}
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>{isIng && !isMXN ? fmt(m.monto) : ""}</div>
-                    {/* USD salida */}
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{!isIng && !isMXN ? fmt(m.monto) : ""}</div>
-                    {/* MXN entrada */}
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#D97706" }}>{isIng && isMXN ? fmtMXN(m.monto) : ""}</div>
-                    {/* MXN salida */}
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{!isIng && isMXN ? fmtMXN(m.monto) : ""}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }}>{!isMXN ? `${isIng ? "+" : "-"}${fmt(m.monto)}` : ""}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#D97706" : "#DC2626" }}>{isMXN ? `${isIng ? "+" : "-"}${fmtMXN(m.monto)}` : ""}</div>
                     <div><button onClick={() => eliminarMov(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></div>
                   </div>
                 );
               })}
               {/* Totals row */}
-              <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "8px 10px", background: "#1A2744", color: "#fff", borderRadius: "0 0 8px 8px", fontSize: 11, fontWeight: 700 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, padding: "8px 10px", background: "#4B5563", color: "#fff", borderRadius: "0 0 8px 8px", fontSize: 11, fontWeight: 700 }}>
                 <div></div><div></div>
                 <div style={{ fontSize: 10, color: "#94A3B8" }}>SALDO PERÍODO</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#86EFAC" }}>{fmt(ingUSD)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FCA5A5" }}>{fmt(egrUSD)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FDE68A" }}>{fmtMXN(ingMXN)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FCA5A5" }}>{fmtMXN(egrMXN)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoUSD >= 0 ? "#86EFAC" : "#FCA5A5" }}>{fmt(saldoUSD)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoMXN >= 0 ? "#FDE68A" : "#FCA5A5" }}>{fmtMXN(saldoMXN)}</div>
                 <div></div>
               </div>
             </div>
