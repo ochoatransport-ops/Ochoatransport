@@ -675,7 +675,7 @@ export default function App() {
   const updF = (id, ch) => {
     persist({ ...data, fantasmas: data.fantasmas.map(f => {
       if (f.id !== id) return f;
-      const updated = { ...f, ...ch, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `Upd: ${Object.keys(ch).join(",")}`, quien: role || "sys" }] };
+      const updated = { ...f, ...ch, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `✏️ Pedido editado`, quien: role || "sys" }] };
       // Auto-sync dineroStatus when payments change
       const ds = calcDineroStatus(updated);
       if (ds && !["DINERO_USA", "COLCHON_USADO", "COLCHON_REPUESTO"].includes(updated.dineroStatus)) {
@@ -1342,6 +1342,18 @@ export default function App() {
               const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
               if (comPct === 0) return null;
               const comCalc = Math.round(base * comPct * 100) / 100;
+              // If already cobrada — show locked, can't re-enable
+              if (ef.comisionCobrada) {
+                return (
+                  <div style={{ gridColumn: "1/-1" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#ECFDF5", borderRadius: 6, border: "2px solid #A7F3D0" }}>
+                      <span style={{ fontSize: 16 }}>✅</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#065F46" }}>Comisión ya cobrada</span>
+                      <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#059669", fontSize: 14, marginLeft: "auto" }}>{fmt(ef.comisionMonto || comCalc)}</span>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: ef.cobrarComision ? "#F5F3FF" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: ef.cobrarComision ? "2px solid #7C3AED" : "1px solid #E5E7EB" }}>
@@ -1362,6 +1374,8 @@ export default function App() {
               const comPct = precioV >= 10000 ? 0.005 : precioV >= 1000 ? 0.008 : 0;
               const comCalc = Math.round(precioV * comPct * 100) / 100;
               const cobrar = ef.cobrarComision && comPct > 0;
+              // Never downgrade a cobrada commission on edit
+              const wasAlreadyCobrada = f.comisionCobrada;
               updF(f.id, {
                 ...ef,
                 costoMercancia: precioV,
@@ -1372,10 +1386,11 @@ export default function App() {
                 cantBultos: parseInt(ef.cantBultos) || 1,
                 costoDesconocido: costoReal > 0 ? false : f.costoDesconocido,
                 fleteDesconocido: cf > 0 ? false : f.fleteDesconocido,
-                totalVenta: precioV + (cobrar ? comCalc : 0),
-                cobrarComision: cobrar,
-                comisionMonto: cobrar ? comCalc : 0,
-                comisionPendiente: cobrar,
+                totalVenta: wasAlreadyCobrada ? f.totalVenta : (precioV + (cobrar ? comCalc : 0)),
+                cobrarComision: wasAlreadyCobrada ? true : cobrar,
+                comisionMonto: wasAlreadyCobrada ? f.comisionMonto : (cobrar ? comCalc : 0),
+                comisionPendiente: wasAlreadyCobrada ? false : cobrar,
+                comisionCobrada: wasAlreadyCobrada ? true : false,
                 dineroStatus: (f.costoDesconocido && costoReal > 0 && !f.soloRecoger) ? "SIN_FONDOS" : f.dineroStatus
               });
               setEd(false);
@@ -4397,11 +4412,16 @@ export default function App() {
                             Pedido: {fmt(f.costoMercancia)} · Comisión: {fmt(f.comisionMonto)}
                           </div>
                         </div>
-                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#7C3AED" }}>{fmt(f.comisionMonto)}</div>
-                          <button onClick={() => {
-                            updF(f.id, { comisionCobrada: true, comisionPendiente: false, historial: [...(f.historial || []), { fecha: today(), accion: `💼 Comisión cobrada: ${fmt(f.comisionMonto)}`, quien: role }] });
-                          }} style={{ marginTop: 4, padding: "4px 10px", borderRadius: 6, border: "none", background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ Cobrada</button>
+                          <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                            <button onClick={() => {
+                              updF(f.id, { comisionCobrada: true, comisionPendiente: false, cobrarComision: true, historial: [...(f.historial || []), { fecha: today(), accion: `💼 Comisión cobrada: ${fmt(f.comisionMonto)}`, quien: role }] });
+                            }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ Cobrada</button>
+                            <button onClick={() => {
+                              updF(f.id, { cobrarComision: false, comisionPendiente: false, comisionMonto: 0, totalVenta: f.costoMercancia, historial: [...(f.historial || []), { fecha: today(), accion: `❌ Comisión eliminada`, quien: role }] });
+                            }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #E5E7EB", background: "#fff", color: "#9CA3AF", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }} title="Eliminar comisión">✕</button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -4411,12 +4431,15 @@ export default function App() {
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 8 }}>Historial cobradas ({cobradas.length})</div>
                     {cobradas.slice(0, 10).map(f => (
-                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB", marginBottom: 4, opacity: 0.7 }}>
+                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB", marginBottom: 4 }}>
                         <div style={{ flex: 1 }}>
                           <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", marginRight: 6 }}>{f.id}</span>
                           <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
                         </div>
                         <span style={{ fontFamily: "monospace", fontSize: 11, color: "#059669", fontWeight: 700 }}>{fmt(f.comisionMonto)} ✓</span>
+                        <button onClick={() => {
+                          updF(f.id, { cobrarComision: false, comisionPendiente: false, comisionCobrada: false, comisionMonto: 0, totalVenta: f.costoMercancia, historial: [...(f.historial || []), { fecha: today(), accion: `❌ Comisión eliminada`, quien: role }] });
+                        }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", fontSize: 12, padding: 2 }} title="Eliminar comisión" onMouseEnter={e => e.currentTarget.style.color="#DC2626"} onMouseLeave={e => e.currentTarget.style.color="#D1D5DB"}>✕</button>
                       </div>
                     ))}
                   </div>
