@@ -2918,13 +2918,20 @@ export default function App() {
         nd = { ...nd, fantasmas: nd.fantasmas.map(f => f.id !== fId ? f : { ...f, dineroStatus: "DINERO_CAMINO", sobreOrigen: origen, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `📨 Sobre enviado a USA (${origen === "admin" ? "💼 Caja Admin" : "🇲🇽 Caja Adolfo"})`, quien: role }] }) };
       });
       if (origen === "admin") {
-        const nuevosEgresos = ids.map((fId, i) => {
+        const nuevosEgresos = [];
+        const nuevosAdelantos = [];
+        ids.forEach((fId, i) => {
           const f = nd.fantasmas.find(x => x.id === fId);
-          if (!f) return null;
+          if (!f) return;
           const monto = f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia;
-          return { id: Date.now() + i, concepto: `SOBRE USA: ${fId} — ${f.cliente}`, monto, moneda: "USD", destino: "BODEGA_USA", fecha: today(), nota: f.descripcion || "", tipoMov: "egreso" };
-        }).filter(Boolean);
+          const refId = Date.now() + i * 2;
+          nuevosEgresos.push({ id: refId, concepto: `SOBRE USA: ${fId} — ${f.cliente}`, monto, montoUSD: monto, montoMXN: 0, moneda: "USD", destino: "BODEGA_USA", fecha: today(), nota: f.descripcion || "", tipoMov: "egreso", adelantoRef: refId + 1 });
+          nuevosAdelantos.push({ id: refId + 1, pedidoId: fId, monto, fecha: today(), nota: `Sobre enviado a USA — ${f.cliente}`, recuperado: false, movRef: refId });
+        });
         nd.gastosAdmin = [...(nd.gastosAdmin || []), ...nuevosEgresos];
+        nd.adelantosAdmin = [...(nd.adelantosAdmin || []), ...nuevosAdelantos];
+        // Mark pedidos as adelanto
+        nd.fantasmas = nd.fantasmas.map(f => ids.includes(f.id) ? { ...f, adelantoAdmin: true } : f);
       }
       persist(nd);
       setSelPedidos({});
@@ -2938,9 +2945,11 @@ export default function App() {
       // Revert status: if client paid, go back to SOBRE_LISTO, otherwise SIN_FONDOS
       const nuevoStatus = (f.clientePago || (f.abonoMercancia || 0) > 0) ? "SOBRE_LISTO" : "SIN_FONDOS";
       nd.fantasmas = nd.fantasmas.map(x => x.id !== fId ? x : { ...x, dineroStatus: nuevoStatus, sobreOrigen: null, fechaActualizacion: today(), historial: [...(x.historial || []), { fecha: today(), accion: "↩ Sobre desenviado — se revirtió el envío", quien: role }] });
-      // If it was from admin, remove the egreso
+      // If it was from admin, remove the egreso and adelanto
       if (f.sobreOrigen === "admin") {
-        nd.gastosAdmin = (nd.gastosAdmin || []).filter(m => !(m.concepto || "").includes(fId) || !m.concepto.startsWith("SOBRE USA"));
+        nd.gastosAdmin = (nd.gastosAdmin || []).filter(m => !((m.concepto || "").startsWith("SOBRE USA") && (m.concepto || "").includes(fId)));
+        nd.adelantosAdmin = (nd.adelantosAdmin || []).filter(a => a.pedidoId !== fId || a.recuperado);
+        nd.fantasmas = nd.fantasmas.map(x => x.id !== fId ? x : { ...x, adelantoAdmin: false });
       }
       persist(nd);
     };
@@ -4481,6 +4490,45 @@ export default function App() {
       );
     };
 
+
+    const FlujoEfectivo = () => {
+      const [subTab, setSubTab] = useState("clientes");
+      const [showGasto, setShowGasto] = useState(false);
+      const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
+      const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
+      const [showCobro, setShowCobro] = useState(false);
+      const [cobSearch, setCobSearch] = useState("");
+      const [editMov, setEditMov] = useState(null); // { fId, movId, monto, fecha, nota }
+      const CATEGORIAS_GASTO = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "OTRO"];
+
+      const gastos = filterByDate(data.gastosBodega || [], "fecha");
+      const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
+
+      // Cobros de clientes
+      const dfFantasmas = data.fantasmas.filter(f => f.estado !== "CERRADO");
+      const cobros = dfFantasmas.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada").map(m => ({ ...m, cliente: f.cliente, fId: f.id, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+      const totalCobradoMerc = dfFantasmas.reduce((s, f) => s + (f.abonoMercancia || 0), 0);
+      const totalCobradoFlete = dfFantasmas.reduce((s, f) => s + (f.abonoFlete || 0), 0);
+      const totalCobrado = totalCobradoMerc + totalCobradoFlete;
+      const totalPendMerc = dfFantasmas.filter(f => !f.clientePago && f.estado !== "CERRADO").reduce((s, f) => s + (f.costoMercancia - (f.abonoMercancia || 0)), 0);
+      const totalPendFlete = dfFantasmas.filter(f => !f.fletePagado && f.costoFlete > 0 && f.estado !== "CERRADO").reduce((s, f) => s + (f.costoFlete - (f.abonoFlete || 0)), 0);
+
+      const agregarGasto = () => {
+        const mo = parseFloat(gastoForm.monto) || 0;
+        const esMXN = gastoForm.moneda === "MXN";
+        const isEnvio = gastoForm.tipoMov === "envio";
+        const g = { id: Date.now(), concepto: gastoForm.concepto.toUpperCase(), monto: mo, moneda: esMXN ? "MXN" : "USD", categoria: gastoForm.categoria, fecha: gastoForm.fecha, nota: gastoForm.nota, tipoMov: isEnvio ? "gasto" : (gastoForm.tipoMov || "gasto"), destino: isEnvio ? gastoForm.destino : null };
+        let nd = { ...data, gastosBodega: [...(data.gastosBodega || []), g] };
+        if (isEnvio) {
+          const ingDest = { id: Date.now() + 1, concepto: `FONDO BODEGA TJ: ${gastoForm.concepto.toUpperCase()}`, monto: mo, moneda: esMXN ? "MXN" : "USD", categoria: "FONDO BODEGA TJ", fecha: gastoForm.fecha, nota: gastoForm.nota, tipoMov: "ingreso" };
+          if (gastoForm.destino === "ADMIN") { ingDest.destino = "ADMIN"; ingDest.origen = "BODEGA_TJ"; nd.gastosAdmin = [...(nd.gastosAdmin || []), ingDest]; }
+          else { nd.gastosUSA = [...(nd.gastosUSA || []), ingDest]; }
+        }
+        persist(nd);
+        setGastoForm({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
+        setShowGasto(false);
+      };
+
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
       const [filtro, setFiltro] = useState("ALL");
@@ -4685,44 +4733,6 @@ export default function App() {
         </div>
       );
     };
-
-    const FlujoEfectivo = () => {
-      const [subTab, setSubTab] = useState("clientes");
-      const [showGasto, setShowGasto] = useState(false);
-      const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
-      const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
-      const [showCobro, setShowCobro] = useState(false);
-      const [cobSearch, setCobSearch] = useState("");
-      const [editMov, setEditMov] = useState(null); // { fId, movId, monto, fecha, nota }
-      const CATEGORIAS_GASTO = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "OTRO"];
-
-      const gastos = filterByDate(data.gastosBodega || [], "fecha");
-      const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
-
-      // Cobros de clientes
-      const dfFantasmas = data.fantasmas.filter(f => f.estado !== "CERRADO");
-      const cobros = dfFantasmas.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada").map(m => ({ ...m, cliente: f.cliente, fId: f.id, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-      const totalCobradoMerc = dfFantasmas.reduce((s, f) => s + (f.abonoMercancia || 0), 0);
-      const totalCobradoFlete = dfFantasmas.reduce((s, f) => s + (f.abonoFlete || 0), 0);
-      const totalCobrado = totalCobradoMerc + totalCobradoFlete;
-      const totalPendMerc = dfFantasmas.filter(f => !f.clientePago && f.estado !== "CERRADO").reduce((s, f) => s + (f.costoMercancia - (f.abonoMercancia || 0)), 0);
-      const totalPendFlete = dfFantasmas.filter(f => !f.fletePagado && f.costoFlete > 0 && f.estado !== "CERRADO").reduce((s, f) => s + (f.costoFlete - (f.abonoFlete || 0)), 0);
-
-      const agregarGasto = () => {
-        const mo = parseFloat(gastoForm.monto) || 0;
-        const esMXN = gastoForm.moneda === "MXN";
-        const isEnvio = gastoForm.tipoMov === "envio";
-        const g = { id: Date.now(), concepto: gastoForm.concepto.toUpperCase(), monto: mo, moneda: esMXN ? "MXN" : "USD", categoria: gastoForm.categoria, fecha: gastoForm.fecha, nota: gastoForm.nota, tipoMov: isEnvio ? "gasto" : (gastoForm.tipoMov || "gasto"), destino: isEnvio ? gastoForm.destino : null };
-        let nd = { ...data, gastosBodega: [...(data.gastosBodega || []), g] };
-        if (isEnvio) {
-          const ingDest = { id: Date.now() + 1, concepto: `FONDO BODEGA TJ: ${gastoForm.concepto.toUpperCase()}`, monto: mo, moneda: esMXN ? "MXN" : "USD", categoria: "FONDO BODEGA TJ", fecha: gastoForm.fecha, nota: gastoForm.nota, tipoMov: "ingreso" };
-          if (gastoForm.destino === "ADMIN") { ingDest.destino = "ADMIN"; ingDest.origen = "BODEGA_TJ"; nd.gastosAdmin = [...(nd.gastosAdmin || []), ingDest]; }
-          else { nd.gastosUSA = [...(nd.gastosUSA || []), ingDest]; }
-        }
-        persist(nd);
-        setGastoForm({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
-        setShowGasto(false);
-      };
 
       const eliminarGasto = async (gId) => { const g = gastos.find(x => x.id === gId); if (!g) return; if (!await showConfirm(`¿Eliminar movimiento?\n\n${g.concepto || "?"} — ${fmt(g.monto || 0)}`)) return; persist({ ...data, gastosBodega: gastos.filter(g => g.id !== gId) }); };
 
