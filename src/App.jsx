@@ -321,9 +321,15 @@ const ROLE_NAV = {
 };
 
 
+const EMPTY_FORM = { cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" };
+
 // ============ NEW FORM (module-level to prevent remount on App re-render) ============
 const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Modal, Btn, Fld, Inp, AutoInp, I, navigate, TIPOS_MERCANCIA }) => {
-  const [f, sF] = useState({ cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" });
+  const [f, sF] = useState(EMPTY_FORM);
+  // Reset form every time it opens
+  const prevShowNew = useRef(false);
+  if (showNew && !prevShowNew.current) { sF(EMPTY_FORM); }
+  prevShowNew.current = showNew;
   if (!showNew) return null;
   const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
   const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
