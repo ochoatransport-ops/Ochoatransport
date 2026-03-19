@@ -1808,9 +1808,44 @@ export default function App() {
   const Bitacora = () => {
     const [sk, setSk] = useState("fechaCreacion"); const [sd, setSd] = useState(-1);
     const [modo, setModo] = useState("axia");
-    const [bitTab, setBitTab] = useState("estado"); // estado, fletes, fantasmas, todos
+    const [bitTab, setBitTab] = useState("estado");
     const [fProv, setFProv] = useState("ALL"); const [fCli, setFCli] = useState("ALL"); const [fVend, setFVend] = useState("ALL"); const [bSearch, setBSearch] = useState("");
     const [bPagoMerc, setBPagoMerc] = useState("ALL"); const [bPagoFlete, setBPagoFlete] = useState("ALL"); const [bEstado, setBEstado] = useState("ALL");
+    const [editCell, setEditCell] = useState(null); // { id, field, val }
+
+    const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
+
+    const startEdit = (e, f, field) => {
+      e.stopPropagation();
+      setEditCell({ id: f.id, field, val: String(f[field] ?? "") });
+    };
+    const saveEdit = () => {
+      if (!editCell) return;
+      const f = data.fantasmas.find(x => x.id === editCell.id);
+      if (!f) { setEditCell(null); return; }
+      const { field, val } = editCell;
+      const numFields = ["costoMercancia", "costoFlete", "cantBultos"];
+      const parsed = numFields.includes(field) ? (parseFloat(val) || 0) : val.trim().toUpperCase();
+      if (String(f[field] ?? "") === String(parsed)) { setEditCell(null); return; }
+      updF(f.id, { [field]: parsed });
+      setEditCell(null);
+    };
+    const EditCell = ({ f, field, style = {}, numeric = false, select = null }) => {
+      const isEditing = editCell?.id === f.id && editCell?.field === field;
+      if (isEditing) {
+        if (select) return (
+          <select autoFocus value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })}
+            onBlur={saveEdit} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit", background: "#EFF6FF" }}>
+            {select.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        );
+        return <input autoFocus type={numeric ? "number" : "text"} value={editCell.val}
+          onChange={e => setEditCell({ ...editCell, val: e.target.value })}
+          onBlur={saveEdit} onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null); }}
+          style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: numeric ? "monospace" : "inherit", background: "#EFF6FF", outline: "none", ...style }} />;
+      }
+      return <span onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
+    };
     const provs = [...new Set(data.fantasmas.map(f => f.proveedor).filter(Boolean))];
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
     const vends = [...new Set(data.fantasmas.map(f => f.vendedor).filter(Boolean))];
@@ -1886,23 +1921,36 @@ export default function App() {
               <th style={{...th, cursor: "default", width: 30}}></th>
             </tr></thead>
             <tbody>{sorted.map((f, i) => {
-              const td = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6" };
-              const go = () => { setDetailMode("full"); navigate("detail", f.id, view); };
-              return (
-                <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
-                  <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600 }}>{f.id}</td>
-                  {modo === "axia" && <td onClick={go} style={{ ...td, color: "#6B7280" }}>{f.vendedor || "—"}</td>}
-                  <td onClick={go} style={{ ...td, color: "#D97706", fontWeight: 600 }}>{f.proveedor || "—"}</td>
-                  <td onClick={go} style={{ ...td, fontWeight: 600 }}>{f.cliente}</td>
-                  <td onClick={go} style={{ ...td, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
-                  {modo === "axia" && <td onClick={go} style={{ ...td, color: "#6B7280", whiteSpace: "nowrap" }}>{f.empaque ? `${f.cantBultos || 1} ${f.empaque}` : "—"}</td>}
-                  {bitTab === "estado" && <><td onClick={go} style={{ ...td, padding: "6px 4px" }}><Badge estado={f.estado} /></td><td onClick={go} style={{ ...td, padding: "6px 4px" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td></>}
-                  {(bitTab === "fantasmas" || bitTab === "todos") && <><td onClick={go} style={{ ...td, fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: f.costoDesconocido ? "#D97706" : "#DC2626" }}>{f.costoDesconocido ? "❓" : fmt(f.costoMercancia)}</td><td onClick={go} style={{ ...td, textAlign: "center" }}>{f.clientePago ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : (f.abonoMercancia || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoMercancia)}</span> : f.costoDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}</td></>}
-                  {(bitTab === "fletes" || bitTab === "todos") && <><td onClick={go} style={{ ...td, fontFamily: "monospace", textAlign: "right", color: f.fleteDesconocido ? "#D97706" : "#2563EB", fontWeight: 600 }}>{f.fleteDesconocido ? "❓" : f.costoFlete ? fmt(f.costoFlete) : "—"}</td><td onClick={go} style={{ ...td, textAlign: "center" }}>{f.fletePagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : f.fleteDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : !f.costoFlete ? <span style={{ color: "#9CA3AF" }}>—</span> : (f.abonoFlete || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoFlete)}</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}</td></>}
-                  <td style={{ ...td, textAlign: "center", padding: "4px" }}><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
-                </tr>
-              );
-            })}</tbody>
+                const td = { padding: "4px 8px", borderBottom: "1px solid #F3F4F6" };
+                const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
+                return (
+                  <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
+                    <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
+                    {modo === "axia" && <td style={td}><EditCell f={f} field="vendedor" /></td>}
+                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EditCell f={f} field="proveedor" /></td>
+                    <td style={{ ...td, fontWeight: 600 }}><EditCell f={f} field="cliente" /></td>
+                    <td style={{ ...td, maxWidth: 140 }}><EditCell f={f} field="descripcion" /></td>
+                    {modo === "axia" && <td style={td}>
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <EditCell f={f} field="cantBultos" numeric style={{ width: 30 }} />
+                        <EditCell f={f} field="empaque" select={EMPAQUES} />
+                      </div>
+                    </td>}
+                    {bitTab === "estado" && <><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td></>}
+                    {(bitTab === "fantasmas" || bitTab === "todos") && <>
+                      <td style={td}><EditCell f={f} field="costoMercancia" numeric style={{ color: "#DC2626", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
+                      <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>{f.clientePago ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : (f.abonoMercancia || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoMercancia)}</span> : f.costoDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
+                      </td>
+                    </>}
+                    {(bitTab === "fletes" || bitTab === "todos") && <>
+                      <td style={td}><EditCell f={f} field="costoFlete" numeric style={{ color: "#2563EB", fontFamily: "monospace", fontWeight: 600, textAlign: "right" }} /></td>
+                      <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>{f.fletePagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : f.fleteDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : !f.costoFlete ? <span style={{ color: "#9CA3AF" }}>—</span> : (f.abonoFlete || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoFlete)}</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
+                      </td>
+                    </>}
+                    <td style={{ ...td, textAlign: "center", padding: "4px" }}><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+                  </tr>
+                );
+              })}</tbody>
           </table>
         </div>
         {confirm && (() => { const cf = data.fantasmas.find(x => x.id === confirm); return cf ? (
@@ -4531,10 +4579,31 @@ export default function App() {
 
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
-      const [filtro, setFiltro] = useState("todos"); // todos | pendientes | pagados
+      const [filtro, setFiltro] = useState("todos");
       const [sk, setSk] = useState("id");
       const [sd, setSd] = useState(1);
+      const [editCell, setEditCell] = useState(null);
       const isMerc = pagoTab === "mercancia";
+      const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
+
+      const startEdit = (e, f, field) => { e.stopPropagation(); setEditCell({ id: f.id, field, val: String(f[field] ?? "") }); };
+      const saveEdit = () => {
+        if (!editCell) return;
+        const f = data.fantasmas.find(x => x.id === editCell.id);
+        if (!f) { setEditCell(null); return; }
+        const numFields = ["costoMercancia", "costoFlete", "cantBultos"];
+        const parsed = numFields.includes(editCell.field) ? (parseFloat(editCell.val) || 0) : editCell.val.trim().toUpperCase();
+        if (String(f[editCell.field] ?? "") !== String(parsed)) updF(f.id, { [editCell.field]: parsed });
+        setEditCell(null);
+      };
+      const EC = ({ f, field, numeric = false, select = null, style = {} }) => {
+        const isE = editCell?.id === f.id && editCell?.field === field;
+        if (isE) {
+          if (select) return <select autoFocus value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onBlur={saveEdit} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit" }}>{select.map(o => <option key={o} value={o}>{o}</option>)}</select>;
+          return <input autoFocus type={numeric ? "number" : "text"} value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onBlur={saveEdit} onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null); }} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: numeric ? "monospace" : "inherit", background: "#EFF6FF", outline: "none", ...style }} />;
+        }
+        return <span onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
+      };
 
       let lista = data.fantasmas.filter(f => f.estado !== "CERRADO");
       if (filtro === "pendientes") lista = lista.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)));
@@ -4604,22 +4673,27 @@ export default function App() {
                 <th style={th}>Pagó</th>
               </tr></thead>
               <tbody>{lista.map((f, i) => {
-                const td = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6" };
-                const go = () => { setDetailMode("full"); navigate("detail", f.id, view); };
+                const td = { padding: "4px 8px", borderBottom: "1px solid #F3F4F6" };
+                const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
                 const monto = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
                 const abono = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
                 const pagado = isMerc ? f.clientePago : f.fletePagado;
                 const desconocido = isMerc ? f.costoDesconocido : f.fleteDesconocido;
                 return (
-                  <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onClick={go} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
-                    <td style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600 }}>{f.id}</td>
-                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}>{f.proveedor || "—"}</td>
-                    <td style={{ ...td, fontWeight: 600 }}>{f.cliente}</td>
-                    <td style={{ ...td, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion || "—"}</td>
-                    <td style={{ ...td, color: "#6B7280", whiteSpace: "nowrap" }}>{f.empaque ? `${f.cantBultos||1} ${f.empaque}` : "—"}</td>
-                    <td style={{ ...td, padding: "6px 4px" }}><Badge estado={f.estado} /></td>
-                    <td style={{ ...td, fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB" }}>{desconocido ? "❓" : monto ? fmt(monto) : "—"}</td>
-                    <td style={{ ...td, textAlign: "center" }}>
+                  <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
+                    <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
+                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EC f={f} field="proveedor" /></td>
+                    <td style={{ ...td, fontWeight: 600 }}><EC f={f} field="cliente" /></td>
+                    <td style={{ ...td, maxWidth: 130 }}><EC f={f} field="descripcion" /></td>
+                    <td style={td}>
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <EC f={f} field="cantBultos" numeric style={{ width: 30 }} />
+                        <EC f={f} field="empaque" select={EMPAQUES} />
+                      </div>
+                    </td>
+                    <td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td>
+                    <td style={td}><EC f={f} field={isMerc ? "costoMercancia" : "costoFlete"} numeric style={{ color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
+                    <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>
                       {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
                         : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(abono)}</span>
                         : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
