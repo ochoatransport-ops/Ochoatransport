@@ -333,6 +333,9 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(false);
+  // NewForm state lives at App level so it survives re-renders
+  const EMPTY_FORM = { cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" };
+  const [newF, setNewF] = useState(EMPTY_FORM);
   const [view, setView] = useState("main");
   const [prevView, setPrevView] = useState("main");
   const [selId, setSelId] = useState(null);
@@ -427,6 +430,11 @@ export default function App() {
   const prevDataRef = useRef(null);
   const formOpenRef = useRef(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
+
+  // Cuando showNew está abierto, pausar los listeners para no interrumpir
+  useEffect(() => {
+    formOpenRef.current = showNew || showColchon;
+  }, [showNew, showColchon]);
 
   // ── Presence system ─────────────────────────────────────────────
   useEffect(() => {
@@ -907,7 +915,8 @@ export default function App() {
   const VEHICULOS = ["ECO 06", "ECO 07", "ECO 08", "ECO 10", "ECO 11", "ECO 12", "ECO 14", "TRAILER", "RABON"];
 
   const NewForm = () => {
-    const [f, sF] = useState({ cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" });
+    const f = newF;
+    const sF = setNewF;
     const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
     const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
     const allProveedores = [...new Set([...Object.keys(data.proveedoresInfo || {}), ...(data.proveedoresList || []), ...data.fantasmas.map(x => x.proveedor).filter(Boolean)])].sort();
@@ -1359,7 +1368,7 @@ export default function App() {
             <option value="pagado">🚛 Pagado ✓</option>
             <option value="pendiente">🚛 Pendiente ✗</option>
           </select>
-          <Btn onClick={() => { setShowNew(true) }}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setNewF(EMPTY_FORM); setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{filtered.length} pedido{filtered.length !== 1 ? "s" : ""}</div>
         {filtered.length === 0 ? <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><p style={{ fontSize: 12 }}>No hay pedidos{search || fEst !== "ALL" ? " con esos filtros" : " en esta vista"}.</p></div> : (() => {
@@ -2856,7 +2865,7 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 Pedidos</h2>
-          <Btn onClick={() => { setShowNew(true) }}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setNewF(EMPTY_FORM); setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
