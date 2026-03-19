@@ -320,6 +320,307 @@ const ROLE_NAV = {
   vendedor: ["ventas", "bodegausa", "bodegatj", "bitacora", "clientes", "proveedores"],
 };
 
+
+// ============ NEW FORM (module-level to prevent remount on App re-render) ============
+const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Modal, Btn, Fld, Inp, AutoInp, I, navigate, TIPOS_MERCANCIA }) => {
+  const [f, sF] = useState({ cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" });
+  if (!showNew) return null;
+  const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
+  const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
+  const allProveedores = [...new Set([...Object.keys(data.proveedoresInfo || {}), ...(data.proveedoresList || []), ...data.fantasmas.map(x => x.proveedor).filter(Boolean)])].sort();
+  const allVendedores = [...new Set([...(data.vendedores || []), ...data.fantasmas.map(x => x.vendedor).filter(Boolean)])].sort();
+  const provInfo = data.proveedoresInfo || {};
+  const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
+
+  const noOpt = (list, label) => list.length === 0 ? <div style={{ fontSize: 10, color: "#D97706", marginTop: 2 }}>⚠️ Registra {label} primero</div> : null;
+
+  return (
+    <Modal title="Nuevo Pedido" onClose={() => { setShowNew(false) }} w={560}>
+      {/* Tabs: Normal / Especial */}
+      <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 16 }}>
+        <button onClick={() => sF({ ...f, pedidoEspecial: false, precioVenta: "" })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: !f.pedidoEspecial ? "#fff" : "transparent", boxShadow: !f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: !f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: !f.pedidoEspecial ? "#1A2744" : "#6B7280" }}>
+          📋 Pedido Normal
+        </button>
+        <button onClick={() => sF({ ...f, pedidoEspecial: true })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: f.pedidoEspecial ? "#F3E8FF" : "transparent", boxShadow: f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: f.pedidoEspecial ? "#7C3AED" : "#6B7280" }}>
+          ⭐ Pedido Especial
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 10px" }}>
+        <Fld label="Cliente *">
+          <AutoInp value={f.cliente} onChange={v => sF({ ...f, cliente: v })} options={allClientes} placeholder="BUSCAR CLIENTE..." strict />
+          {noOpt(allClientes, "clientes")}
+        </Fld>
+        <Fld label="Proveedor *">
+          <AutoInp value={f.proveedor} onChange={v => sF({ ...f, proveedor: v })} options={allProveedores} placeholder="BUSCAR PROVEEDOR..." strict onSelect={v => {
+            const info = provInfo[v] || {};
+            sF(prev => ({ ...prev, proveedor: v, ubicacionProv: info.ubicacion || "" }));
+          }} />
+          {noOpt(allProveedores, "proveedores")}
+          {f.proveedor && provInfo[f.proveedor] && <div style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>📍 {provInfo[f.proveedor].ubicacion || "—"}{provInfo[f.proveedor].contacto ? ` · 👤 ${provInfo[f.proveedor].contacto}` : ""}{provInfo[f.proveedor].telefono ? ` · 📞 ${provInfo[f.proveedor].telefono}` : ""}</div>}
+        </Fld>
+        <Fld label="Vendedor">
+          <AutoInp value={f.vendedor} onChange={v => sF({ ...f, vendedor: v })} options={allVendedores} placeholder="BUSCAR VENDEDOR..." strict />
+        </Fld>
+
+        {/* Tipo mercancía */}
+        <Fld label="Tipo mercancía">
+          {f.tipoMercancia === "DESCONOCIDO" ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
+              <button type="button" onClick={() => sF({ ...f, tipoMercancia: "" })} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: "#6B7280" }}>✕ Cambiar</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6 }}>
+              <AutoInp value={f.tipoMercancia} onChange={v => sF({ ...f, tipoMercancia: v })} options={TIPOS_MERCANCIA} placeholder="BUSCAR TIPO... (opcional)" strict />
+              <button type="button" onClick={() => sF({ ...f, tipoMercancia: "DESCONOCIDO" })} title="Marcar como desconocido" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #FDE68A", background: "#FEF3C7", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#92400E", fontWeight: 700 }}>❓</button>
+            </div>
+          )}
+        </Fld>
+        <div style={{ gridColumn: "span 2" }}>
+          <Fld label="Descripción mercancía">
+            {f.descripcion === "DESCONOCIDO" ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
+                <button type="button" onClick={() => sF({ ...f, descripcion: "" })} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: "#6B7280" }}>✕ Cambiar</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6 }}>
+                <Inp value={f.descripcion} onChange={e => sF({ ...f, descripcion: e.target.value.toUpperCase() })} placeholder="¿QUÉ PIDIÓ? (opcional)" style={{ textTransform: "uppercase", flex: 1 }} />
+                <button type="button" onClick={() => sF({ ...f, descripcion: "DESCONOCIDO" })} title="Marcar como desconocido" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #FDE68A", background: "#FEF3C7", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#92400E", fontWeight: 700, whiteSpace: "nowrap" }}>❓</button>
+              </div>
+            )}
+          </Fld>
+        </div>
+
+        <Fld label="Empaque">
+          {f.empaque === "Desconocido" ? (
+            <div style={{ padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
+          ) : (
+            <AutoInp value={f.empaque} onChange={v => sF({ ...f, empaque: v })} options={EMPAQUES} placeholder="TIPO..." strict />
+          )}
+        </Fld>
+        {f.empaque === "Otro" && <Fld label="¿Cuál?"><Inp value={f.empaqueOtro} onChange={e => sF({ ...f, empaqueOtro: e.target.value.toUpperCase() })} placeholder="ESPECIFICAR" style={{ textTransform: "uppercase" }} /></Fld>}
+        <Fld label="# Bultos">
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {f.empaque === "Desconocido" ? (
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
+            ) : (
+              <Inp type="number" value={f.cantBultos} onChange={e => sF({ ...f, cantBultos: e.target.value })} placeholder="1" style={{ flex: 1 }} />
+            )}
+            <button onClick={() => {
+              const isUnknown = f.empaque !== "Desconocido";
+              sF({ ...f, empaque: isUnknown ? "Desconocido" : "", cantBultos: isUnknown ? "?" : "1" });
+            }} style={{ padding: "6px 8px", borderRadius: 6, border: f.empaque === "Desconocido" ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.empaque === "Desconocido" ? "#FEF3C7" : "#fff", color: f.empaque === "Desconocido" ? "#92400E" : "#6B7280", fontWeight: f.empaque === "Desconocido" ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>❓</button>
+          </div>
+        </Fld>
+
+        {/* Pricing mode toggle */}
+        <div style={{ gridColumn: "1/-1", background: "#F9FAFB", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#374151", textTransform: "uppercase" }}>Costo mercancía</span>
+            <div style={{ display: "flex", gap: 2, background: "#E5E7EB", borderRadius: 5, padding: 2 }}>
+              <button onClick={() => sF({ ...f, modoPrecios: "total" })} style={{ padding: "3px 10px", borderRadius: 4, border: "none", fontSize: 10, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", background: f.modoPrecios === "total" ? "#fff" : "transparent", color: f.modoPrecios === "total" ? "#1A2744" : "#9CA3AF", boxShadow: f.modoPrecios === "total" ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>Monto total</button>
+              <button onClick={() => sF({ ...f, modoPrecios: "unitario" })} style={{ padding: "3px 10px", borderRadius: 4, border: "none", fontSize: 10, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", background: f.modoPrecios === "unitario" ? "#fff" : "transparent", color: f.modoPrecios === "unitario" ? "#1A2744" : "#9CA3AF", boxShadow: f.modoPrecios === "unitario" ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>Precio unitario</button>
+            </div>
+          </div>
+          {f.modoPrecios === "unitario" ? (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
+                <Fld label="Cantidad piezas"><Inp type="number" value={f.cantidad} onChange={e => sF({ ...f, cantidad: e.target.value })} placeholder="Piezas" /></Fld>
+                <Fld label="Costo unitario USD"><Inp type="number" value={f.costoUnitario} onChange={e => sF({ ...f, costoUnitario: e.target.value })} placeholder="Costo x pieza" /></Fld>
+              </div>
+              {f.cantidad && f.costoUnitario && <div style={{ fontSize: 11, color: "#6B7280", marginTop: -4 }}>
+                Costo total: <strong style={{ color: "#1A2744", fontFamily: "monospace" }}>{fmt(calcCosto)}</strong>
+              </div>}
+            </div>
+          ) : (
+            <Fld label="Costo total USD">
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                {f.costoDesconocido ? (
+                  <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Por definir</div>
+                ) : (
+                  <Inp type="number" value={f.costoMercancia} onChange={e => sF({ ...f, costoMercancia: e.target.value })} placeholder="Monto total" style={{ flex: 1 }} />
+                )}
+                <button onClick={() => sF({ ...f, costoDesconocido: !f.costoDesconocido, costoMercancia: f.costoDesconocido ? "" : "0" })} style={{ padding: "6px 10px", borderRadius: 6, border: f.costoDesconocido ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.costoDesconocido ? "#FEF3C7" : "#fff", color: f.costoDesconocido ? "#92400E" : "#6B7280", fontWeight: f.costoDesconocido ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>❓</button>
+              </div>
+            </Fld>
+          )}
+        </div>
+
+        {f.pedidoEspecial && (
+          <div style={{ gridColumn: "1/-1", background: "#FDF4FF", borderRadius: 8, padding: "12px 14px", border: "2px solid #E9D5FF", marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginBottom: 10 }}>⭐ Precio especial — el cliente NO verá el costo real</div>
+            <div style={{ display: "flex", gap: 3, background: "#E9D5FF", borderRadius: 6, padding: 2, marginBottom: 10 }}>
+              <button onClick={() => sF({ ...f, modoEspecial: "total", precioVenta: "" })} style={{ flex: 1, padding: "5px", borderRadius: 5, border: "none", background: (f.modoEspecial !== "pieza") ? "#fff" : "transparent", cursor: "pointer", fontSize: 11, fontWeight: (f.modoEspecial !== "pieza") ? 700 : 500, fontFamily: "inherit", color: (f.modoEspecial !== "pieza") ? "#7C3AED" : "#9CA3AF" }}>📦 Monto total</button>
+              <button onClick={() => sF({ ...f, modoEspecial: "pieza", precioVenta: "" })} style={{ flex: 1, padding: "5px", borderRadius: 5, border: "none", background: f.modoEspecial === "pieza" ? "#fff" : "transparent", cursor: "pointer", fontSize: 11, fontWeight: f.modoEspecial === "pieza" ? 700 : 500, fontFamily: "inherit", color: f.modoEspecial === "pieza" ? "#7C3AED" : "#9CA3AF" }}>🔢 Por pieza</button>
+            </div>
+            {f.modoEspecial === "pieza" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
+                <Fld label="Costo proveedor x pieza USD">
+                  <div style={{ padding: "7px 10px", borderRadius: 6, background: "#F3E8FF", border: "1px solid #E9D5FF", fontSize: 12, fontFamily: "monospace", color: "#7C3AED" }}>
+                    {f.costoUnitario ? fmt(parseFloat(f.costoUnitario)) : "—"} <span style={{ fontSize: 9, color: "#9CA3AF" }}>(del campo anterior)</span>
+                  </div>
+                </Fld>
+                <Fld label="Precio de venta x pieza USD *">
+                  <Inp type="number" value={f.precioVenta} onChange={e => sF({ ...f, precioVenta: e.target.value })} placeholder="Lo que cobra al cliente" />
+                </Fld>
+                {f.precioVenta && f.costoUnitario && f.cantidad && (
+                  <div style={{ gridColumn: "1/-1", display: "flex", gap: 12, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E9D5FF", fontSize: 11, flexWrap: "wrap" }}>
+                    <span>Costo total: <strong style={{ fontFamily: "monospace" }}>{fmt((parseFloat(f.costoUnitario)||0)*(parseFloat(f.cantidad)||0))}</strong></span>
+                    <span>Venta total: <strong style={{ fontFamily: "monospace", color: "#059669" }}>{fmt((parseFloat(f.precioVenta)||0)*(parseFloat(f.cantidad)||0))}</strong></span>
+                    <span style={{ fontWeight: 700, color: "#059669" }}>Ganancia: {fmt(((parseFloat(f.precioVenta)||0)-(parseFloat(f.costoUnitario)||0))*(parseFloat(f.cantidad)||0))}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
+                <Fld label="Costo real (proveedor) USD">
+                  <div style={{ padding: "7px 10px", borderRadius: 6, background: "#F3E8FF", border: "1px solid #E9D5FF", fontSize: 12, fontFamily: "monospace", color: "#7C3AED" }}>
+                    {calcCosto ? fmt(calcCosto) : "—"} <span style={{ fontSize: 9, color: "#9CA3AF" }}>(del campo anterior)</span>
+                  </div>
+                </Fld>
+                <Fld label="Precio de venta al cliente USD *">
+                  <Inp type="number" value={f.precioVenta} onChange={e => sF({ ...f, precioVenta: e.target.value })} placeholder="Lo que paga el cliente" />
+                </Fld>
+                {f.precioVenta && calcCosto > 0 && (
+                  <div style={{ gridColumn: "1/-1", display: "flex", gap: 12, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E9D5FF", fontSize: 11, flexWrap: "wrap" }}>
+                    <span>Costo: <strong style={{ fontFamily: "monospace" }}>{fmt(calcCosto)}</strong></span>
+                    <span>Venta: <strong style={{ fontFamily: "monospace", color: "#059669" }}>{fmt(parseFloat(f.precioVenta))}</strong></span>
+                    <span style={{ fontWeight: 700, color: "#059669" }}>Ganancia: {fmt(parseFloat(f.precioVenta) - calcCosto)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <Fld label="Flete USD">
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {f.fleteDesconocido ? (
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Por definir</div>
+            ) : (
+              <Inp type="number" value={f.costoFlete} onChange={e => sF({ ...f, costoFlete: e.target.value })} placeholder="0.00" style={{ flex: 1 }} />
+            )}
+            <button onClick={() => sF({ ...f, fleteDesconocido: !f.fleteDesconocido, costoFlete: f.fleteDesconocido ? "" : "0" })} style={{ padding: "6px 10px", borderRadius: 6, border: f.fleteDesconocido ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.fleteDesconocido ? "#FEF3C7" : "#fff", color: f.fleteDesconocido ? "#92400E" : "#6B7280", fontWeight: f.fleteDesconocido ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>❓ Desconocido</button>
+          </div>
+        </Fld>
+        {/* Comisión auto-calculated */}
+        {(() => {
+          const base = f.costoDesconocido ? 0 : (f.modoPrecios === "unitario" ? (parseFloat(f.cantidad)||0) * (parseFloat(f.costoUnitario)||0) : parseFloat(f.costoMercancia) || 0);
+          const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
+          const comCalc = Math.round(base * comPct * 100) / 100;
+          if (comPct === 0 && !f.cobrarComision) return null;
+          return (
+            <div style={{ gridColumn: "1/-1", marginBottom: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: f.cobrarComision ? "#F5F3FF" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.cobrarComision ? "2px solid #7C3AED" : "1px solid #E5E7EB" }}>
+                <input type="checkbox" checked={f.cobrarComision || false} onChange={e => sF({ ...f, cobrarComision: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#7C3AED" }} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: f.cobrarComision ? "#7C3AED" : "#6B7280" }}>💰 Cobrar comisión ({comPct * 100}%)</span>
+                  <div style={{ fontSize: 10, color: "#9CA3AF" }}>Base: {fmt(base)} → Comisión: <strong style={{ color: "#7C3AED" }}>{fmt(comCalc)}</strong></div>
+                </div>
+                <span style={{ fontFamily: "monospace", fontWeight: 700, color: f.cobrarComision ? "#7C3AED" : "#9CA3AF", fontSize: 14 }}>{fmt(comCalc)}</span>
+              </label>
+            </div>
+          );
+        })()}
+        <div style={{ gridColumn: "1/-1", display: "flex", gap: 8, marginBottom: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: f.urgente ? "#FEE2E2" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.urgente ? "2px solid #DC2626" : "1px solid #E5E7EB", flex: 1 }}>
+            <input type="checkbox" checked={f.urgente} onChange={e => sF({ ...f, urgente: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#DC2626" }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: f.urgente ? "#DC2626" : "#6B7280" }}>🔥 Urgente</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: f.soloRecoger ? "#DBEAFE" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.soloRecoger ? "2px solid #2563EB" : "1px solid #E5E7EB", flex: 1 }}>
+            <input type="checkbox" checked={f.soloRecoger} onChange={e => sF({ ...f, soloRecoger: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB" }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: f.soloRecoger ? "#2563EB" : "#6B7280" }}>📦 Solo recoger</span>
+          </label>
+        </div>
+        {f.soloRecoger && <div style={{ gridColumn: "1/-1", background: "#DBEAFE", borderRadius: 6, padding: "6px 10px", border: "1px solid #93C5FD", fontSize: 10, color: "#1E40AF", marginBottom: 8 }}>ℹ️ El cliente ya pagó directo al proveedor. Solo se recoge la mercancía, no pasa dinero por nosotros.</div>}
+        <div style={{ gridColumn: "1/-1" }}><Fld label="Notas"><textarea value={f.notas} onChange={e => sF({ ...f, notas: e.target.value })} rows={2} placeholder="Detalles..." style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: "inherit", resize: "vertical", background: "#FAFAFA", boxSizing: "border-box" }} /></Fld></div>
+      </div>
+      {/* Total summary */}
+      {(() => {
+        const costoBase = f.costoDesconocido ? 0 : (f.modoPrecios === "unitario" ? (parseFloat(f.cantidad)||0) * (parseFloat(f.costoUnitario)||0) : parseFloat(f.costoMercancia) || 0);
+        const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
+        const precioVentaSet = f.pedidoEspecial && f.precioVenta && parseFloat(f.precioVenta) > 0;
+        const base = f.pedidoEspecial
+          ? (esPieza
+              ? (parseFloat(f.precioVenta)||0) * (parseFloat(f.cantidad)||0)
+              : (parseFloat(f.precioVenta) || costoBase))
+          : costoBase;
+        const flete = f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0);
+        const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
+        const com = f.cobrarComision ? Math.round(base * comPct * 100) / 100 : 0;
+        const total = base + com;
+        if (!costoBase && !flete) return null;
+        return (
+          <div style={{ background: f.pedidoEspecial ? "#F3E8FF" : "#F0FDF4", borderRadius: 8, padding: "10px 14px", border: `1px solid ${f.pedidoEspecial ? "#E9D5FF" : "#BBF7D0"}`, marginTop: 4, marginBottom: 4 }}>
+            {f.pedidoEspecial && costoBase > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9CA3AF", marginBottom: 2 }}>
+                <span>Costo real:</span><span style={{ fontFamily: "monospace" }}>{fmt(costoBase)}</span>
+              </div>
+            )}
+            {f.pedidoEspecial && !precioVentaSet && (
+              <div style={{ fontSize: 11, color: "#D97706", fontWeight: 600, marginBottom: 4 }}>⚠️ Ingresa el precio de venta arriba para ver el total del cliente</div>
+            )}
+            {(!f.pedidoEspecial || precioVentaSet) && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                <span>Mercancía:</span><span style={{ fontFamily: "monospace" }}>{fmt(base)}</span>
+              </div>
+            )}
+            {com > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#7C3AED" }}>
+              <span>Comisión:</span><span style={{ fontFamily: "monospace" }}>+{fmt(com)}</span>
+            </div>}
+            {(!f.pedidoEspecial || precioVentaSet) && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: `1px solid ${f.pedidoEspecial ? "#E9D5FF" : "#BBF7D0"}`, paddingTop: 4, marginTop: 4 }}>
+                <span>Total cliente:</span><span style={{ fontFamily: "monospace", color: f.pedidoEspecial ? "#7C3AED" : "#059669" }}>{fmt(total)}</span>
+              </div>
+            )}
+            {flete > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#6B7280" }}>
+              <span>+ Flete:</span><span style={{ fontFamily: "monospace" }}>{fmt(flete)}</span>
+            </div>}
+            {f.pedidoEspecial && precioVentaSet && costoBase > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "#059669", marginTop: 4, paddingTop: 4, borderTop: "1px solid #E9D5FF" }}>
+                <span>⭐ Ganancia:</span><span style={{ fontFamily: "monospace" }}>{fmt(base - costoBase)}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
+        <Btn v="secondary" onClick={() => { setShowNew(false) }}>Cancelar</Btn>
+        <Btn disabled={!allClientes.includes(f.cliente) || !allProveedores.includes(f.proveedor) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
+          const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
+          const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
+          const precioVentaUnit = esPieza ? (parseFloat(f.precioVenta) || 0) : 0;
+          const cantPiezas = parseFloat(f.cantidad) || 0;
+          // precioVentaFinal = lo que PAGA EL CLIENTE (el mayor, e.g. $6,500)
+          // costoM = lo que nos cobra el proveedor (e.g. $6,000)
+          const precioVentaFinal = f.pedidoEspecial
+            ? (esPieza
+                ? precioVentaUnit * cantPiezas          // por pieza: precio venta x piezas
+                : (parseFloat(f.precioVenta) || costoM)) // monto total: precio venta al cliente
+            : costoM; // normal: el costo es lo que paga el cliente
+          const ganancia = f.pedidoEspecial ? (precioVentaFinal - costoM) : null;
+          const comPct = precioVentaFinal >= 10000 ? 0.005 : precioVentaFinal >= 1000 ? 0.008 : 0;
+          const comCalc = Math.round(precioVentaFinal * comPct * 100) / 100;
+          addF({ ...f,
+            costoMercancia: precioVentaFinal,   // fantasma = precio que paga el cliente
+            costoReal: f.pedidoEspecial ? costoM : null,  // costo proveedor, solo interno
+            pedidoEspecial: f.pedidoEspecial || false,
+            modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
+            precioVentaUnitario: esPieza ? precioVentaUnit : null,
+            gananciaEspecial: ganancia,
+            costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
+            cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
+            costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
+            comisionMonto: f.cobrarComision ? comCalc : 0,
+            comisionPendiente: f.cobrarComision || false,
+            totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0)
+          });
+        }}><I.Plus /> Crear</Btn>
+      </div>
+    </Modal>
+  );
+};
+
 export default function App() {
   const [data, setData] = useState(init());
   const [loading, setLoading] = useState(true);
@@ -919,294 +1220,6 @@ export default function App() {
   const TIPOS_MERCANCIA = ["ROPA", "CALZADO", "ELECTRÓNICO", "ACCESORIOS", "ALIMENTOS", "COSMÉTICOS", "HOGAR", "JUGUETES", "HERRAMIENTAS", "AUTOPARTES", "FARMACIA", "DEPORTES", "TECNOLOGÍA", "MUEBLES", "TEXTIL", "JOYERÍA", "PAPELERÍA", "OTRO"];
   const VEHICULOS = ["ECO 06", "ECO 07", "ECO 08", "ECO 10", "ECO 11", "ECO 12", "ECO 14", "TRAILER", "RABON"];
 
-  const NewForm = () => {
-    const [f, sF] = useState({ cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" });
-    if (!showNew) return null;
-    const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
-    const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
-    const allProveedores = [...new Set([...Object.keys(data.proveedoresInfo || {}), ...(data.proveedoresList || []), ...data.fantasmas.map(x => x.proveedor).filter(Boolean)])].sort();
-    const allVendedores = [...new Set([...(data.vendedores || []), ...data.fantasmas.map(x => x.vendedor).filter(Boolean)])].sort();
-    const provInfo = data.proveedoresInfo || {};
-    const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
-
-    const noOpt = (list, label) => list.length === 0 ? <div style={{ fontSize: 10, color: "#D97706", marginTop: 2 }}>⚠️ Registra {label} primero</div> : null;
-
-    return (
-      <Modal title="Nuevo Pedido" onClose={() => { setShowNew(false) }} w={560}>
-        {/* Tabs: Normal / Especial */}
-        <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 16 }}>
-          <button onClick={() => sF({ ...f, pedidoEspecial: false, precioVenta: "" })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: !f.pedidoEspecial ? "#fff" : "transparent", boxShadow: !f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: !f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: !f.pedidoEspecial ? "#1A2744" : "#6B7280" }}>
-            📋 Pedido Normal
-          </button>
-          <button onClick={() => sF({ ...f, pedidoEspecial: true })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: f.pedidoEspecial ? "#F3E8FF" : "transparent", boxShadow: f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: f.pedidoEspecial ? "#7C3AED" : "#6B7280" }}>
-            ⭐ Pedido Especial
-          </button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 10px" }}>
-          <Fld label="Cliente *">
-            <AutoInp value={f.cliente} onChange={v => sF({ ...f, cliente: v })} options={allClientes} placeholder="BUSCAR CLIENTE..." strict />
-            {noOpt(allClientes, "clientes")}
-          </Fld>
-          <Fld label="Proveedor *">
-            <AutoInp value={f.proveedor} onChange={v => sF({ ...f, proveedor: v })} options={allProveedores} placeholder="BUSCAR PROVEEDOR..." strict onSelect={v => {
-              const info = provInfo[v] || {};
-              sF(prev => ({ ...prev, proveedor: v, ubicacionProv: info.ubicacion || "" }));
-            }} />
-            {noOpt(allProveedores, "proveedores")}
-            {f.proveedor && provInfo[f.proveedor] && <div style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>📍 {provInfo[f.proveedor].ubicacion || "—"}{provInfo[f.proveedor].contacto ? ` · 👤 ${provInfo[f.proveedor].contacto}` : ""}{provInfo[f.proveedor].telefono ? ` · 📞 ${provInfo[f.proveedor].telefono}` : ""}</div>}
-          </Fld>
-          <Fld label="Vendedor">
-            <AutoInp value={f.vendedor} onChange={v => sF({ ...f, vendedor: v })} options={allVendedores} placeholder="BUSCAR VENDEDOR..." strict />
-          </Fld>
-
-          {/* Tipo mercancía */}
-          <Fld label="Tipo mercancía *">
-            <AutoInp value={f.tipoMercancia} onChange={v => sF({ ...f, tipoMercancia: v })} options={TIPOS_MERCANCIA} placeholder="BUSCAR TIPO..." strict />
-          </Fld>
-          <div style={{ gridColumn: "span 2" }}>
-            <Fld label="Descripción mercancía">
-              {f.descripcion === "DESCONOCIDO" ? (
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
-                  <button type="button" onClick={() => sF({ ...f, descripcion: "" })} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: "#6B7280" }}>✕ Cambiar</button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Inp value={f.descripcion} onChange={e => sF({ ...f, descripcion: e.target.value.toUpperCase() })} placeholder="¿QUÉ PIDIÓ? (opcional)" style={{ textTransform: "uppercase", flex: 1 }} />
-                  <button type="button" onClick={() => sF({ ...f, descripcion: "DESCONOCIDO" })} title="Marcar como desconocido" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #FDE68A", background: "#FEF3C7", fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#92400E", fontWeight: 700, whiteSpace: "nowrap" }}>❓</button>
-                </div>
-              )}
-            </Fld>
-          </div>
-
-          <Fld label="Empaque">
-            {f.empaque === "Desconocido" ? (
-              <div style={{ padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
-            ) : (
-              <AutoInp value={f.empaque} onChange={v => sF({ ...f, empaque: v })} options={EMPAQUES} placeholder="TIPO..." strict />
-            )}
-          </Fld>
-          {f.empaque === "Otro" && <Fld label="¿Cuál?"><Inp value={f.empaqueOtro} onChange={e => sF({ ...f, empaqueOtro: e.target.value.toUpperCase() })} placeholder="ESPECIFICAR" style={{ textTransform: "uppercase" }} /></Fld>}
-          <Fld label="# Bultos">
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              {f.empaque === "Desconocido" ? (
-                <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Desconocido</div>
-              ) : (
-                <Inp type="number" value={f.cantBultos} onChange={e => sF({ ...f, cantBultos: e.target.value })} placeholder="1" style={{ flex: 1 }} />
-              )}
-              <button onClick={() => {
-                const isUnknown = f.empaque !== "Desconocido";
-                sF({ ...f, empaque: isUnknown ? "Desconocido" : "", cantBultos: isUnknown ? "?" : "1" });
-              }} style={{ padding: "6px 8px", borderRadius: 6, border: f.empaque === "Desconocido" ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.empaque === "Desconocido" ? "#FEF3C7" : "#fff", color: f.empaque === "Desconocido" ? "#92400E" : "#6B7280", fontWeight: f.empaque === "Desconocido" ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>❓</button>
-            </div>
-          </Fld>
-
-          {/* Pricing mode toggle */}
-          <div style={{ gridColumn: "1/-1", background: "#F9FAFB", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#374151", textTransform: "uppercase" }}>Costo mercancía</span>
-              <div style={{ display: "flex", gap: 2, background: "#E5E7EB", borderRadius: 5, padding: 2 }}>
-                <button onClick={() => sF({ ...f, modoPrecios: "total" })} style={{ padding: "3px 10px", borderRadius: 4, border: "none", fontSize: 10, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", background: f.modoPrecios === "total" ? "#fff" : "transparent", color: f.modoPrecios === "total" ? "#1A2744" : "#9CA3AF", boxShadow: f.modoPrecios === "total" ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>Monto total</button>
-                <button onClick={() => sF({ ...f, modoPrecios: "unitario" })} style={{ padding: "3px 10px", borderRadius: 4, border: "none", fontSize: 10, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", background: f.modoPrecios === "unitario" ? "#fff" : "transparent", color: f.modoPrecios === "unitario" ? "#1A2744" : "#9CA3AF", boxShadow: f.modoPrecios === "unitario" ? "0 1px 2px rgba(0,0,0,.1)" : "none" }}>Precio unitario</button>
-              </div>
-            </div>
-            {f.modoPrecios === "unitario" ? (
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
-                  <Fld label="Cantidad piezas"><Inp type="number" value={f.cantidad} onChange={e => sF({ ...f, cantidad: e.target.value })} placeholder="Piezas" /></Fld>
-                  <Fld label="Costo unitario USD"><Inp type="number" value={f.costoUnitario} onChange={e => sF({ ...f, costoUnitario: e.target.value })} placeholder="Costo x pieza" /></Fld>
-                </div>
-                {f.cantidad && f.costoUnitario && <div style={{ fontSize: 11, color: "#6B7280", marginTop: -4 }}>
-                  Costo total: <strong style={{ color: "#1A2744", fontFamily: "monospace" }}>{fmt(calcCosto)}</strong>
-                </div>}
-              </div>
-            ) : (
-              <Fld label="Costo total USD">
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                  {f.costoDesconocido ? (
-                    <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Por definir</div>
-                  ) : (
-                    <Inp type="number" value={f.costoMercancia} onChange={e => sF({ ...f, costoMercancia: e.target.value })} placeholder="Monto total" style={{ flex: 1 }} />
-                  )}
-                  <button onClick={() => sF({ ...f, costoDesconocido: !f.costoDesconocido, costoMercancia: f.costoDesconocido ? "" : "0" })} style={{ padding: "6px 10px", borderRadius: 6, border: f.costoDesconocido ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.costoDesconocido ? "#FEF3C7" : "#fff", color: f.costoDesconocido ? "#92400E" : "#6B7280", fontWeight: f.costoDesconocido ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>❓</button>
-                </div>
-              </Fld>
-            )}
-          </div>
-
-          {f.pedidoEspecial && (
-            <div style={{ gridColumn: "1/-1", background: "#FDF4FF", borderRadius: 8, padding: "12px 14px", border: "2px solid #E9D5FF", marginBottom: 4 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginBottom: 10 }}>⭐ Precio especial — el cliente NO verá el costo real</div>
-              <div style={{ display: "flex", gap: 3, background: "#E9D5FF", borderRadius: 6, padding: 2, marginBottom: 10 }}>
-                <button onClick={() => sF({ ...f, modoEspecial: "total", precioVenta: "" })} style={{ flex: 1, padding: "5px", borderRadius: 5, border: "none", background: (f.modoEspecial !== "pieza") ? "#fff" : "transparent", cursor: "pointer", fontSize: 11, fontWeight: (f.modoEspecial !== "pieza") ? 700 : 500, fontFamily: "inherit", color: (f.modoEspecial !== "pieza") ? "#7C3AED" : "#9CA3AF" }}>📦 Monto total</button>
-                <button onClick={() => sF({ ...f, modoEspecial: "pieza", precioVenta: "" })} style={{ flex: 1, padding: "5px", borderRadius: 5, border: "none", background: f.modoEspecial === "pieza" ? "#fff" : "transparent", cursor: "pointer", fontSize: 11, fontWeight: f.modoEspecial === "pieza" ? 700 : 500, fontFamily: "inherit", color: f.modoEspecial === "pieza" ? "#7C3AED" : "#9CA3AF" }}>🔢 Por pieza</button>
-              </div>
-              {f.modoEspecial === "pieza" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
-                  <Fld label="Costo proveedor x pieza USD">
-                    <div style={{ padding: "7px 10px", borderRadius: 6, background: "#F3E8FF", border: "1px solid #E9D5FF", fontSize: 12, fontFamily: "monospace", color: "#7C3AED" }}>
-                      {f.costoUnitario ? fmt(parseFloat(f.costoUnitario)) : "—"} <span style={{ fontSize: 9, color: "#9CA3AF" }}>(del campo anterior)</span>
-                    </div>
-                  </Fld>
-                  <Fld label="Precio de venta x pieza USD *">
-                    <Inp type="number" value={f.precioVenta} onChange={e => sF({ ...f, precioVenta: e.target.value })} placeholder="Lo que cobra al cliente" />
-                  </Fld>
-                  {f.precioVenta && f.costoUnitario && f.cantidad && (
-                    <div style={{ gridColumn: "1/-1", display: "flex", gap: 12, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E9D5FF", fontSize: 11, flexWrap: "wrap" }}>
-                      <span>Costo total: <strong style={{ fontFamily: "monospace" }}>{fmt((parseFloat(f.costoUnitario)||0)*(parseFloat(f.cantidad)||0))}</strong></span>
-                      <span>Venta total: <strong style={{ fontFamily: "monospace", color: "#059669" }}>{fmt((parseFloat(f.precioVenta)||0)*(parseFloat(f.cantidad)||0))}</strong></span>
-                      <span style={{ fontWeight: 700, color: "#059669" }}>Ganancia: {fmt(((parseFloat(f.precioVenta)||0)-(parseFloat(f.costoUnitario)||0))*(parseFloat(f.cantidad)||0))}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
-                  <Fld label="Costo real (proveedor) USD">
-                    <div style={{ padding: "7px 10px", borderRadius: 6, background: "#F3E8FF", border: "1px solid #E9D5FF", fontSize: 12, fontFamily: "monospace", color: "#7C3AED" }}>
-                      {calcCosto ? fmt(calcCosto) : "—"} <span style={{ fontSize: 9, color: "#9CA3AF" }}>(del campo anterior)</span>
-                    </div>
-                  </Fld>
-                  <Fld label="Precio de venta al cliente USD *">
-                    <Inp type="number" value={f.precioVenta} onChange={e => sF({ ...f, precioVenta: e.target.value })} placeholder="Lo que paga el cliente" />
-                  </Fld>
-                  {f.precioVenta && calcCosto > 0 && (
-                    <div style={{ gridColumn: "1/-1", display: "flex", gap: 12, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E9D5FF", fontSize: 11, flexWrap: "wrap" }}>
-                      <span>Costo: <strong style={{ fontFamily: "monospace" }}>{fmt(calcCosto)}</strong></span>
-                      <span>Venta: <strong style={{ fontFamily: "monospace", color: "#059669" }}>{fmt(parseFloat(f.precioVenta))}</strong></span>
-                      <span style={{ fontWeight: 700, color: "#059669" }}>Ganancia: {fmt(parseFloat(f.precioVenta) - calcCosto)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          <Fld label="Flete USD">
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              {f.fleteDesconocido ? (
-                <div style={{ flex: 1, padding: "7px 10px", borderRadius: 6, background: "#FEF3C7", border: "1px solid #FDE68A", fontSize: 11, color: "#92400E", fontWeight: 600 }}>❓ Por definir</div>
-              ) : (
-                <Inp type="number" value={f.costoFlete} onChange={e => sF({ ...f, costoFlete: e.target.value })} placeholder="0.00" style={{ flex: 1 }} />
-              )}
-              <button onClick={() => sF({ ...f, fleteDesconocido: !f.fleteDesconocido, costoFlete: f.fleteDesconocido ? "" : "0" })} style={{ padding: "6px 10px", borderRadius: 6, border: f.fleteDesconocido ? "2px solid #D97706" : "1px solid #D1D5DB", background: f.fleteDesconocido ? "#FEF3C7" : "#fff", color: f.fleteDesconocido ? "#92400E" : "#6B7280", fontWeight: f.fleteDesconocido ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>❓ Desconocido</button>
-            </div>
-          </Fld>
-          {/* Comisión auto-calculated */}
-          {(() => {
-            const base = f.costoDesconocido ? 0 : (f.modoPrecios === "unitario" ? (parseFloat(f.cantidad)||0) * (parseFloat(f.costoUnitario)||0) : parseFloat(f.costoMercancia) || 0);
-            const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
-            const comCalc = Math.round(base * comPct * 100) / 100;
-            if (comPct === 0 && !f.cobrarComision) return null;
-            return (
-              <div style={{ gridColumn: "1/-1", marginBottom: 8 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: f.cobrarComision ? "#F5F3FF" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.cobrarComision ? "2px solid #7C3AED" : "1px solid #E5E7EB" }}>
-                  <input type="checkbox" checked={f.cobrarComision || false} onChange={e => sF({ ...f, cobrarComision: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#7C3AED" }} />
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: f.cobrarComision ? "#7C3AED" : "#6B7280" }}>💰 Cobrar comisión ({comPct * 100}%)</span>
-                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>Base: {fmt(base)} → Comisión: <strong style={{ color: "#7C3AED" }}>{fmt(comCalc)}</strong></div>
-                  </div>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: f.cobrarComision ? "#7C3AED" : "#9CA3AF", fontSize: 14 }}>{fmt(comCalc)}</span>
-                </label>
-              </div>
-            );
-          })()}
-          <div style={{ gridColumn: "1/-1", display: "flex", gap: 8, marginBottom: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: f.urgente ? "#FEE2E2" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.urgente ? "2px solid #DC2626" : "1px solid #E5E7EB", flex: 1 }}>
-              <input type="checkbox" checked={f.urgente} onChange={e => sF({ ...f, urgente: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#DC2626" }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: f.urgente ? "#DC2626" : "#6B7280" }}>🔥 Urgente</span>
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: f.soloRecoger ? "#DBEAFE" : "#F9FAFB", borderRadius: 6, cursor: "pointer", border: f.soloRecoger ? "2px solid #2563EB" : "1px solid #E5E7EB", flex: 1 }}>
-              <input type="checkbox" checked={f.soloRecoger} onChange={e => sF({ ...f, soloRecoger: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB" }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: f.soloRecoger ? "#2563EB" : "#6B7280" }}>📦 Solo recoger</span>
-            </label>
-          </div>
-          {f.soloRecoger && <div style={{ gridColumn: "1/-1", background: "#DBEAFE", borderRadius: 6, padding: "6px 10px", border: "1px solid #93C5FD", fontSize: 10, color: "#1E40AF", marginBottom: 8 }}>ℹ️ El cliente ya pagó directo al proveedor. Solo se recoge la mercancía, no pasa dinero por nosotros.</div>}
-          <div style={{ gridColumn: "1/-1" }}><Fld label="Notas"><textarea value={f.notas} onChange={e => sF({ ...f, notas: e.target.value })} rows={2} placeholder="Detalles..." style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: "inherit", resize: "vertical", background: "#FAFAFA", boxSizing: "border-box" }} /></Fld></div>
-        </div>
-        {/* Total summary */}
-        {(() => {
-          const costoBase = f.costoDesconocido ? 0 : (f.modoPrecios === "unitario" ? (parseFloat(f.cantidad)||0) * (parseFloat(f.costoUnitario)||0) : parseFloat(f.costoMercancia) || 0);
-          const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
-          const precioVentaSet = f.pedidoEspecial && f.precioVenta && parseFloat(f.precioVenta) > 0;
-          const base = f.pedidoEspecial
-            ? (esPieza
-                ? (parseFloat(f.precioVenta)||0) * (parseFloat(f.cantidad)||0)
-                : (parseFloat(f.precioVenta) || costoBase))
-            : costoBase;
-          const flete = f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0);
-          const comPct = base >= 10000 ? 0.005 : base >= 1000 ? 0.008 : 0;
-          const com = f.cobrarComision ? Math.round(base * comPct * 100) / 100 : 0;
-          const total = base + com;
-          if (!costoBase && !flete) return null;
-          return (
-            <div style={{ background: f.pedidoEspecial ? "#F3E8FF" : "#F0FDF4", borderRadius: 8, padding: "10px 14px", border: `1px solid ${f.pedidoEspecial ? "#E9D5FF" : "#BBF7D0"}`, marginTop: 4, marginBottom: 4 }}>
-              {f.pedidoEspecial && costoBase > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9CA3AF", marginBottom: 2 }}>
-                  <span>Costo real:</span><span style={{ fontFamily: "monospace" }}>{fmt(costoBase)}</span>
-                </div>
-              )}
-              {f.pedidoEspecial && !precioVentaSet && (
-                <div style={{ fontSize: 11, color: "#D97706", fontWeight: 600, marginBottom: 4 }}>⚠️ Ingresa el precio de venta arriba para ver el total del cliente</div>
-              )}
-              {(!f.pedidoEspecial || precioVentaSet) && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <span>Mercancía:</span><span style={{ fontFamily: "monospace" }}>{fmt(base)}</span>
-                </div>
-              )}
-              {com > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#7C3AED" }}>
-                <span>Comisión:</span><span style={{ fontFamily: "monospace" }}>+{fmt(com)}</span>
-              </div>}
-              {(!f.pedidoEspecial || precioVentaSet) && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: `1px solid ${f.pedidoEspecial ? "#E9D5FF" : "#BBF7D0"}`, paddingTop: 4, marginTop: 4 }}>
-                  <span>Total cliente:</span><span style={{ fontFamily: "monospace", color: f.pedidoEspecial ? "#7C3AED" : "#059669" }}>{fmt(total)}</span>
-                </div>
-              )}
-              {flete > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#6B7280" }}>
-                <span>+ Flete:</span><span style={{ fontFamily: "monospace" }}>{fmt(flete)}</span>
-              </div>}
-              {f.pedidoEspecial && precioVentaSet && costoBase > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "#059669", marginTop: 4, paddingTop: 4, borderTop: "1px solid #E9D5FF" }}>
-                  <span>⭐ Ganancia:</span><span style={{ fontFamily: "monospace" }}>{fmt(base - costoBase)}</span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-          <Btn v="secondary" onClick={() => { setShowNew(false) }}>Cancelar</Btn>
-          <Btn disabled={!allClientes.includes(f.cliente) || !allProveedores.includes(f.proveedor) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
-            const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
-            const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
-            const precioVentaUnit = esPieza ? (parseFloat(f.precioVenta) || 0) : 0;
-            const cantPiezas = parseFloat(f.cantidad) || 0;
-            // precioVentaFinal = lo que PAGA EL CLIENTE (el mayor, e.g. $6,500)
-            // costoM = lo que nos cobra el proveedor (e.g. $6,000)
-            const precioVentaFinal = f.pedidoEspecial
-              ? (esPieza
-                  ? precioVentaUnit * cantPiezas          // por pieza: precio venta x piezas
-                  : (parseFloat(f.precioVenta) || costoM)) // monto total: precio venta al cliente
-              : costoM; // normal: el costo es lo que paga el cliente
-            const ganancia = f.pedidoEspecial ? (precioVentaFinal - costoM) : null;
-            const comPct = precioVentaFinal >= 10000 ? 0.005 : precioVentaFinal >= 1000 ? 0.008 : 0;
-            const comCalc = Math.round(precioVentaFinal * comPct * 100) / 100;
-            addF({ ...f,
-              costoMercancia: precioVentaFinal,   // fantasma = precio que paga el cliente
-              costoReal: f.pedidoEspecial ? costoM : null,  // costo proveedor, solo interno
-              pedidoEspecial: f.pedidoEspecial || false,
-              modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
-              precioVentaUnitario: esPieza ? precioVentaUnit : null,
-              gananciaEspecial: ganancia,
-              costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
-              cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
-              costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
-              comisionMonto: f.cobrarComision ? comCalc : 0,
-              comisionPendiente: f.cobrarComision || false,
-              totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0)
-            });
-          }}><I.Plus /> Crear</Btn>
-        </div>
-      </Modal>
-    );
-  };
 
   // ============ DETAIL VIEW - clean read-only ============
   const DetailView = () => {
@@ -6657,7 +6670,7 @@ export default function App() {
         {view === "clientes" && <Clientes />}
         {view === "proveedores" && <Proveedores />}
       </main>
-      <NewForm />
+      <NewForm showNew={showNew} data={data} addF={addF} role={role} setShowNew={setShowNew} today={today} fmt={fmt} fmtD={fmtD} Modal={Modal} Btn={Btn} Fld={Fld} Inp={Inp} AutoInp={AutoInp} I={I} navigate={navigate} TIPOS_MERCANCIA={TIPOS_MERCANCIA} />
       {showColchon && <ColchonModal />}
       {/* Global dialog modal - replaces window.alert and window.confirm */}
       {dialog && (
