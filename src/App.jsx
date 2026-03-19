@@ -3030,10 +3030,22 @@ export default function App() {
         {/* Pendientes de pago — solo mercancía */}
         {pendientesMerc.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>👻 Mercancía pendiente ({pendientesMerc.length})</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626" }}>👻 Mercancía pendiente ({pendientesMerc.length})</div>
+              <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selPedidos }; pendientesMerc.forEach(f => ns[f.id] = true); setSelPedidos(ns); }}>Seleccionar todos</Btn>
+            </div>
             {pendientesMerc.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0)).map(f => {
               const dm = (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0);
-              return <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
+              return <div key={f.id} style={{ background: selPedidos[f.id] ? "#EFF6FF" : "#fff", borderRadius: 8, border: selPedidos[f.id] ? "2px solid #93C5FD" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <input type="checkbox" checked={!!selPedidos[f.id]} onChange={e => setSelPedidos({ ...selPedidos, [f.id]: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB", flexShrink: 0 }} />
+                <div style={{ flex: 1, cursor: "pointer" }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div>
+                  <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div>
+                </div>
+                <div style={{ fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}</div>
+                <button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
+                <I.Right />
+              </div>;
             })}
           </div>
         )}
@@ -4225,7 +4237,6 @@ export default function App() {
       const showTrans = showTransApp; const setShowTrans = setShowTransApp;
       const [editId, setEditId] = useState(null);
       const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
-      const setTForm = (v) => { const nv = typeof v === "function" ? v(tForm) : v; if (nv.tipo !== tForm.tipo) setTFormTipo(nv.tipo); setTFormLocal(nv); };
 
       const CUENTAS = [
         { id: "scotiabank", banco: "SCOTIABANK", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "5579 2091 5461 3159", clabe: "044028256059014716", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
