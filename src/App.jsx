@@ -1070,8 +1070,7 @@ export default function App() {
       // Sync dineroStatus
       d.fantasmas = d.fantasmas.map(f => {
         const mercPagado = f.clientePago;
-        const fleteAplica = f.costoFlete > 0 || f.fleteDesconocido;
-        const fleteOk = f.fletePagado || f.soloRecoger || !fleteAplica;
+        const fleteOk = f.fletePagado || f.soloRecoger;
         if (mercPagado && fleteOk && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
         if (mercPagado && !fleteOk && !["TODO_PAGADO","FANTASMA_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
         if (!mercPagado && f.fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
@@ -1243,8 +1242,7 @@ export default function App() {
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
     const mercPagado = f.clientePago;
-    const fleteAplica = f.costoFlete > 0 || f.fleteDesconocido;
-    const fleteOk = f.fletePagado || f.soloRecoger || !fleteAplica;
+    const fleteOk = f.fletePagado || f.soloRecoger;
     if (mercPagado && fleteOk) return "TODO_PAGADO";
     if (mercPagado) return "FANTASMA_PAGADO";
     if (fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
