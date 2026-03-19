@@ -656,7 +656,19 @@ export default function App() {
   });
   const [prevView, setPrevView] = useState("main");
   const [selId, setSelId] = useState(null);
-  const [showNew, setShowNew] = useState(false);
+  // Bitacora states — lifted to App level to survive remounts
+  const [bitSk, setBitSk] = useState("fechaCreacion");
+  const [bitSd, setBitSd] = useState(-1);
+  const [bitModo, setBitModo] = useState("axia");
+  const [bitTab, setBitTab] = useState("estado");
+  const [bitFProv, setBitFProv] = useState("ALL");
+  const [bitFCli, setBitFCli] = useState("ALL");
+  const [bitFVend, setBitFVend] = useState("ALL");
+  const [bitSearch, setBitSearch] = useState("");
+  const [bitPagoMerc, setBitPagoMerc] = useState("ALL");
+  const [bitPagoFlete, setBitPagoFlete] = useState("ALL");
+  const [bitEstado, setBitEstado] = useState("ALL");
+    const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
   const [showTransApp, setShowTransApp] = useState(false);
   const [tFormTipo, setTFormTipo] = useState("flete"); // only tipo lives at App level to survive re-renders
@@ -756,11 +768,14 @@ export default function App() {
 
   const prevDataRef = useRef(null);
   const formOpenRef = useRef(false);
+  const lastActivityRef = useRef(0);
+  // Track user activity — pause listeners for 3s after any interaction
+  const onUserActivity = () => { lastActivityRef.current = Date.now(); };
   const [onlineUsers, setOnlineUsers] = useState([]);
 
   // Cuando showNew está abierto, pausar los listeners para no interrumpir
   useEffect(() => {
-    formOpenRef.current = showNew || showColchon || showTransApp;
+    formOpenRef.current = showNew || showColchon || showTransApp || !!editCell;
   }, [showNew, showColchon, showTransApp]);
 
   // ── Presence system ─────────────────────────────────────────────
@@ -849,7 +864,7 @@ export default function App() {
     }, (err) => console.error("Realtime listener error:", err));
 
     const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
-      if (!snap.exists() || formOpenRef.current) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
       const meta = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -867,7 +882,7 @@ export default function App() {
     });
 
     const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
       const fin = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -884,7 +899,7 @@ export default function App() {
     });
 
     const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
-      if (!snap.exists() || formOpenRef.current) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
       setData(prev => {
         if (!prev) return prev;
         const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
@@ -894,7 +909,7 @@ export default function App() {
     });
 
     const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
       const c = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -1806,11 +1821,16 @@ export default function App() {
 
   // ============ BITÁCORA ============
   const Bitacora = () => {
-    const [sk, setSk] = useState("fechaCreacion"); const [sd, setSd] = useState(-1);
-    const [modo, setModo] = useState("axia");
-    const [bitTab, setBitTab] = useState("estado");
-    const [fProv, setFProv] = useState("ALL"); const [fCli, setFCli] = useState("ALL"); const [fVend, setFVend] = useState("ALL"); const [bSearch, setBSearch] = useState("");
-    const [bPagoMerc, setBPagoMerc] = useState("ALL"); const [bPagoFlete, setBPagoFlete] = useState("ALL"); const [bEstado, setBEstado] = useState("ALL");
+    const sk = bitSk; const setSk = setBitSk;
+    const sd = bitSd; const setSd = setBitSd;
+    const modo = bitModo; const setModo = setBitModo;
+    const fProv = bitFProv; const setFProv = setBitFProv;
+    const fCli = bitFCli; const setFCli = setBitFCli;
+    const fVend = bitFVend; const setFVend = setBitFVend;
+    const bSearch = bitSearch; const setBSearch = setBitSearch;
+    const bPagoMerc = bitPagoMerc; const setBPagoMerc = setBitPagoMerc;
+    const bPagoFlete = bitPagoFlete; const setBPagoFlete = setBitPagoFlete;
+    const bEstado = bitEstado; const setBEstado = setBitEstado;
     const [editCell, setEditCell] = useState(null); // { id, field, val }
 
     const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
@@ -1831,7 +1851,8 @@ export default function App() {
       if (!f) { setEditCell(null); return; }
       const { field, val } = editCell;
       const numFields = ["costoMercancia", "costoFlete", "cantBultos"];
-      const parsed = numFields.includes(field) ? (parseFloat(val) || 0) : val.trim().toUpperCase();
+      const noUpper = ["cliente", "proveedor", "vendedor"];
+      const parsed = numFields.includes(field) ? (parseFloat(val) || 0) : noUpper.includes(field) ? val.trim() : val.trim().toUpperCase();
       if (String(f[field] ?? "") === String(parsed)) { setEditCell(null); return; }
       updF(f.id, { [field]: parsed });
       setEditCell(null);
@@ -1938,9 +1959,9 @@ export default function App() {
                 return (
                   <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
                     <td onClick={() => goDelayed(go)} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
-                    {modo === "axia" && <td style={td}><EditCell f={f} field="vendedor" /></td>}
-                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EditCell f={f} field="proveedor" /></td>
-                    <td style={{ ...td, fontWeight: 600 }}><EditCell f={f} field="cliente" /></td>
+                    {modo === "axia" && <td style={td}><EditCell f={f} field="vendedor" select={vends} /></td>}
+                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EditCell f={f} field="proveedor" select={provs} /></td>
+                    <td style={{ ...td, fontWeight: 600 }}><EditCell f={f} field="cliente" select={clis} /></td>
                     <td style={{ ...td, maxWidth: 140 }}><EditCell f={f} field="descripcion" /></td>
                     {modo === "axia" && <td style={td}>
                       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -2347,7 +2368,7 @@ export default function App() {
                               <div style={{ fontSize: 10, color: "#9CA3AF" }}>{f.cantidad ? `Cant: ${f.cantidad} · Unit: ${fmt(f.costoUnitario)}` : "Mercancía"}</div>
                             )}
                           </div>
-                          <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeMerc)}</div>
+                          <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeMerc)}</div>
                         </label>
                       )}
                       {/* Flete row */}
@@ -2359,7 +2380,7 @@ export default function App() {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 12, fontWeight: 600 }}>🚛 {f.id} — Flete</div>
                           </div>
-                          <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeFlete)}</div>
+                          <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeFlete)}</div>
                         </label>
                       )}
                     </div>
@@ -2604,7 +2625,7 @@ export default function App() {
                               <span style={{ color: "#6B7280" }}>{f.cliente}</span>
                               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
                               <div style={{ textAlign: "right", minWidth: 80 }}>
-                                <div style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmt(debe)}</div>
+                                <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmt(debe)}</div>
                                 {(f.abonoProveedor || 0) > 0 && <div style={{ fontSize: 9, color: "#059669" }}>Abonado: {fmt(f.abonoProveedor)}</div>}
                               </div>
                             </div>
@@ -2695,7 +2716,7 @@ export default function App() {
                         <div style={{ fontSize: 12, fontWeight: 600 }}>{f.id} — {f.descripcion.length > 30 ? f.descripcion.slice(0, 30) + "..." : f.descripcion}</div>
                         <div style={{ fontSize: 10, color: "#9CA3AF" }}>{f.cliente}{f.cantidad ? ` · Cant: ${f.cantidad}` : ""}{f.creditoProveedor ? " · Crédito" : ""}</div>
                       </div>
-                      <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#7C3AED", fontSize: 13 }}>{fmt(debe)}</div>
+                      <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#7C3AED", fontSize: 13 }}>{fmt(debe)}</div>
                     </label>
                   );
                 })}
@@ -4606,7 +4627,8 @@ export default function App() {
         const f = data.fantasmas.find(x => x.id === editCell.id);
         if (!f) { setEditCell(null); return; }
         const numFields = ["costoMercancia", "costoFlete", "cantBultos"];
-        const parsed = numFields.includes(editCell.field) ? (parseFloat(editCell.val) || 0) : editCell.val.trim().toUpperCase();
+        const noUpper = ["cliente", "proveedor", "vendedor"];
+        const parsed = numFields.includes(editCell.field) ? (parseFloat(editCell.val) || 0) : noUpper.includes(editCell.field) ? editCell.val.trim() : editCell.val.trim().toUpperCase();
         if (String(f[editCell.field] ?? "") !== String(parsed)) updF(f.id, { [editCell.field]: parsed });
         setEditCell(null);
       };
@@ -4696,8 +4718,8 @@ export default function App() {
                 return (
                   <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
                     <td onClick={() => goDelayed2(go)} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
-                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EC f={f} field="proveedor" /></td>
-                    <td style={{ ...td, fontWeight: 600 }}><EC f={f} field="cliente" /></td>
+                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EC f={f} field="proveedor" select={[...new Set(data.fantasmas.map(x=>x.proveedor).filter(Boolean))].sort()} /></td>
+                    <td style={{ ...td, fontWeight: 600 }}><EC f={f} field="cliente" select={[...new Set([...(data.clientes||[]),...data.fantasmas.map(x=>x.cliente).filter(Boolean)])].sort()} /></td>
                     <td style={{ ...td, maxWidth: 130 }}><EC f={f} field="descripcion" /></td>
                     <td style={td}>
                       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
