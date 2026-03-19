@@ -4726,16 +4726,16 @@ export default function App() {
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
     const byDest = (dest, tipo) => movs.filter(m => m.destino === dest && (tipo ? m.tipoMov === tipo : true));
 
-    // Saldos separados USD y MXN (con arrastre)
+    // Saldos separados USD y MXN (con arrastre) — supports combined USD+MXN movements
     const prevAdm = calcSaldoAnterior(data.gastosAdmin || [], "fecha");
-    const usdMovs = movs.filter(m => m.moneda !== "MXN");
-    const mxnMovs = movs.filter(m => m.moneda === "MXN");
-    const ingUSD = usdMovs.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.monto || 0), 0);
-    const egrUSD = usdMovs.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
+    const ingUSD = movs.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.montoUSD || (m.moneda !== "MXN" ? m.monto : 0) || 0), 0);
+    const egrUSD = movs.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.montoUSD || (m.moneda !== "MXN" ? m.monto : 0) || 0), 0);
     const saldoUSD = prevAdm.usd + ingUSD - egrUSD;
-    const ingMXN = mxnMovs.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.monto || 0), 0);
-    const egrMXN = mxnMovs.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
+    const ingMXN = movs.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.montoMXN || (m.moneda === "MXN" ? m.monto : 0) || 0), 0);
+    const egrMXN = movs.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.montoMXN || (m.moneda === "MXN" ? m.monto : 0) || 0), 0);
     const saldoMXN = prevAdm.mxn + ingMXN - egrMXN;
+    const usdMovs = movs; // kept for compatibility
+    const mxnMovs = movs; // kept for compatibility
     const fmtMXN = (n) => "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 }) + " MXN";
 
     const eliminarMov = async (mId) => {
@@ -4786,42 +4786,31 @@ export default function App() {
       if (isEnvio) tipoMov = "egreso";
       if (isRecibir) tipoMov = "ingreso";
 
-      let nd = { ...data };
-      const baseId = Date.now();
+      // Save as ONE movement with both montoUSD and montoMXN
+      const g = {
+        id: Date.now(),
+        concepto: movForm.concepto.toUpperCase(),
+        monto: montoUSD > 0 ? montoUSD : montoMXN,
+        moneda: montoUSD > 0 ? "USD" : "MXN",
+        montoUSD: montoUSD || 0,
+        montoMXN: montoMXN || 0,
+        destino: isEnvio ? movForm.destino : "ADMIN",
+        origen: isRecibir ? movForm.destino : null,
+        fecha: movForm.fecha,
+        nota: movForm.nota,
+        tipoMov
+      };
+      let nd = { ...data, gastosAdmin: [...(data.gastosAdmin || []), g] };
 
-      // Save USD movement if filled
-      if (montoUSD > 0) {
-        const g = { id: baseId, concepto: movForm.concepto.toUpperCase(), monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, destino: isEnvio ? movForm.destino : "ADMIN", origen: isRecibir ? movForm.destino : null, fecha: movForm.fecha, nota: movForm.nota, tipoMov };
-        nd.gastosAdmin = [...(nd.gastosAdmin || []), g];
-        if (isEnvio) {
-          const ingBodega = { id: baseId + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
-          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
-          else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
-        }
-        if (isRecibir) {
-          const egrBodega = { id: baseId + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
-          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
-          else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
-        }
+      if (isEnvio) {
+        const ingBodega = { id: Date.now() + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD > 0 ? montoUSD : montoMXN, moneda: montoUSD > 0 ? "USD" : "MXN", montoUSD: montoUSD || 0, montoMXN: montoMXN || 0, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
+        if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
+        else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
       }
-
-      // Save MXN movement if filled
-      if (montoMXN > 0) {
-        const g = { id: baseId + 10, concepto: movForm.concepto.toUpperCase(), monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, destino: isEnvio ? movForm.destino : "ADMIN", origen: isRecibir ? movForm.destino : null, fecha: movForm.fecha, nota: movForm.nota, tipoMov };
-        nd.gastosAdmin = [...(nd.gastosAdmin || []), g];
-        if (isEnvio) {
-          const ingBodega = { id: baseId + 11, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, montoOriginal: montoMXN, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
-          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
-          else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
-        }
-        if (isRecibir) {
-          const egrBodega = { id: baseId + 12, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
-          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
-          else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
-        }
-      }
-
       if (isRecibir) {
+        const egrBodega = { id: Date.now() + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD > 0 ? montoUSD : montoMXN, moneda: montoUSD > 0 ? "USD" : "MXN", montoUSD: montoUSD || 0, montoMXN: montoMXN || 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
+        if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
+        else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
         const pedRec = movForm.pedidosRec || {};
         const monto = montoUSD > 0 ? montoUSD : montoMXN;
         const moneda = montoUSD > 0 ? "USD" : "MXN";
@@ -4910,12 +4899,12 @@ export default function App() {
         {sortedMovs.length === 0 && (prevAdm.usd === 0 && prevAdm.mxn === 0) ? <p style={{ color: "#9CA3AF", fontSize: 11, textAlign: "center", padding: 30 }}>Sin movimientos.</p> : (
           <div style={{ overflowX: "auto" }}>
             {/* Excel-style table header */}
-            <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, background: "#4B5563", color: "#fff", borderRadius: "8px 8px 0 0", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, background: "#F3F4F6", color: "#374151", borderRadius: "8px 8px 0 0", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
               <div>Fecha</div>
               <div>Tipo</div>
               <div>Concepto</div>
-              <div style={{ textAlign: "right", color: "#86EFAC" }}>🇺🇸 USD</div>
-              <div style={{ textAlign: "right", color: "#FDE68A" }}>🇲🇽 MXN</div>
+              <div style={{ textAlign: "right", color: "#059669" }}>🇺🇸 USD</div>
+              <div style={{ textAlign: "right", color: "#D97706" }}>🇲🇽 MXN</div>
               <div></div>
             </div>
             <div style={{ border: "1px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
@@ -4941,18 +4930,18 @@ export default function App() {
                     <div style={{ color: "#9CA3AF", fontSize: 9 }}>{fmtD(m.fecha)}</div>
                     <div style={{ fontSize: 9, background: isIng ? "#D1FAE5" : "#FEE2E2", color: isIng ? "#065F46" : "#991B1B", padding: "1px 5px", borderRadius: 3, fontWeight: 700, display: "inline-block" }}>{tipoLabel}</div>
                     <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}{m.nota && <span style={{ color: "#9CA3AF", fontWeight: 400 }}> · {m.nota}</span>}</div>
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }}>{!isMXN ? `${isIng ? "+" : "-"}${fmt(m.monto)}` : ""}</div>
-                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#D97706" : "#DC2626" }}>{isMXN ? `${isIng ? "+" : "-"}${fmtMXN(m.monto)}` : ""}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }}>{(m.montoUSD || (!isMXN ? m.monto : 0)) > 0 ? `${isIng ? "+" : "-"}${fmt(m.montoUSD || m.monto)}` : ""}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#D97706" : "#DC2626" }}>{(m.montoMXN || (isMXN ? m.monto : 0)) > 0 ? `${isIng ? "+" : "-"}${fmtMXN(m.montoMXN || m.monto)}` : ""}</div>
                     <div><button onClick={() => eliminarMov(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></div>
                   </div>
                 );
               })}
               {/* Totals row */}
-              <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, padding: "8px 10px", background: "#4B5563", color: "#fff", borderRadius: "0 0 8px 8px", fontSize: 11, fontWeight: 700 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 110px 110px 28px", gap: 0, padding: "8px 10px", background: "#F3F4F6", color: "#374151", borderRadius: "0 0 8px 8px", fontSize: 11, fontWeight: 700 }}>
                 <div></div><div></div>
                 <div style={{ fontSize: 10, color: "#94A3B8" }}>SALDO PERÍODO</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoUSD >= 0 ? "#86EFAC" : "#FCA5A5" }}>{fmt(saldoUSD)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoMXN >= 0 ? "#FDE68A" : "#FCA5A5" }}>{fmtMXN(saldoMXN)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoUSD >= 0 ? "#059669" : "#DC2626" }}>{fmt(saldoUSD)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: saldoMXN >= 0 ? "#D97706" : "#DC2626" }}>{fmtMXN(saldoMXN)}</div>
                 <div></div>
               </div>
             </div>
