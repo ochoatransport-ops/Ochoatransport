@@ -1809,7 +1809,7 @@ export default function App() {
     const [sk, setSk] = useState("fechaCreacion"); const [sd, setSd] = useState(-1);
     const [modo, setModo] = useState("axia");
     const [bitTab, setBitTab] = useState("estado"); // estado, fletes, fantasmas, todos
-    const [fProv, setFProv] = useState("ALL"); const [fCli, setFCli] = useState("ALL"); const [fVend, setFVend] = useState("ALL"); const bSearch = bSearch2; const setBSearch = setBSearch2;
+    const [fProv, setFProv] = useState("ALL"); const [fCli, setFCli] = useState("ALL"); const [fVend, setFVend] = useState("ALL"); const [bSearch, setBSearch] = useState("");
     const [bPagoMerc, setBPagoMerc] = useState("ALL"); const [bPagoFlete, setBPagoFlete] = useState("ALL"); const [bEstado, setBEstado] = useState("ALL");
     const provs = [...new Set(data.fantasmas.map(f => f.proveedor).filter(Boolean))];
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
