@@ -2942,8 +2942,7 @@ export default function App() {
       const esTrans = f.dineroStatus === "TRANS_PENDIENTE" || pagoConTransferencia(f);
       return (
       <div key={f.id} style={{ background: f.urgente ? "#FFF5F5" : selPedidos[f.id] ? "#EFF6FF" : "#fff", borderRadius: 8, border: selPedidos[f.id] ? "2px solid #93C5FD" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        {showSelect && !esTrans && <input type="checkbox" checked={!!selPedidos[f.id]} onChange={e => setSelPedidos({ ...selPedidos, [f.id]: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB", flexShrink: 0 }} />}
-        {showSelect && esTrans && <span title="Pagado por transferencia — el sobre lo envía Admin" style={{ fontSize: 9, background: "#F3E8FF", color: "#7C3AED", border: "1px solid #E9D5FF", borderRadius: 4, padding: "2px 5px", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>🏦 Admin</span>}
+        {showSelect && <input type="checkbox" checked={!!selPedidos[f.id]} onChange={e => setSelPedidos({ ...selPedidos, [f.id]: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB", flexShrink: 0 }} />}
         <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "wrap" }}>
             <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
