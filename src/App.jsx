@@ -333,9 +333,6 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(false);
-  // NewForm state lives at App level so it survives re-renders
-  const EMPTY_FORM = { cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" };
-  const [newF, setNewF] = useState(EMPTY_FORM);
   const [view, setView] = useState("main");
   const [prevView, setPrevView] = useState("main");
   const [selId, setSelId] = useState(null);
@@ -354,8 +351,6 @@ export default function App() {
   const [finTab, setFinTab] = useState("efectivo");
   const [efSubTab, setEfSubTab] = useState("clientes");
   const [efMoneda, setEfMoneda] = useState("ALL");
-  const [efSearch, setEfSearch] = useState("");
-  const [efTipo, setEfTipo] = useState("ALL");
 
   // ── Global dialog system (replaces window.alert / window.confirm) ──
   const [dialog, setDialog] = useState(null);
@@ -369,15 +364,7 @@ export default function App() {
       onCancel: () => { setDialog(null); resolve(false); },
     });
   });
-  const [tjTransSearch, setTjTransSearch] = useState("");
-  const [adelSearch, setAdelSearch] = useState("");
-  const [dashTab2, setDashTab2] = useState("fletes");
-  const [dashSearch2, setDashSearch2] = useState("");
-  const [dashFCli2, setDashFCli2] = useState("ALL");
-  const [dashFProv2, setDashFProv2] = useState("ALL");
   const [bSearch2, setBSearch2] = useState("");
-  const [cuentasTab2, setCuentasTab2] = useState("cobrar");
-  const [cxpExpand2, setCxpExpand2] = useState(null);
   const [corteExp, setCorteExp] = useState(null);
   const [periodoTipo, setPeriodoTipo] = useState("semana"); // global, año, mes, semana
   const [periodoOffset, setPeriodoOffset] = useState(0); // 0=current, -1=previous, etc
@@ -914,8 +901,8 @@ export default function App() {
   const VEHICULOS = ["ECO 06", "ECO 07", "ECO 08", "ECO 10", "ECO 11", "ECO 12", "ECO 14", "TRAILER", "RABON"];
 
   const NewForm = () => {
-    const f = newF;
-    const sF = setNewF;
+    const [f, sF] = useState({ cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" });
+    if (!showNew) return null;
     const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
     const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
     const allProveedores = [...new Set([...Object.keys(data.proveedoresInfo || {}), ...(data.proveedoresList || []), ...data.fantasmas.map(x => x.proveedor).filter(Boolean)])].sort();
@@ -1430,7 +1417,7 @@ export default function App() {
             <option value="pagado">🚛 Pagado ✓</option>
             <option value="pendiente">🚛 Pendiente ✗</option>
           </select>
-          <Btn onClick={() => { setNewF(EMPTY_FORM); setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{filtered.length} pedido{filtered.length !== 1 ? "s" : ""}</div>
         {filtered.length === 0 ? <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><p style={{ fontSize: 12 }}>No hay pedidos{search || fEst !== "ALL" ? " con esos filtros" : " en esta vista"}.</p></div> : (() => {
@@ -1491,10 +1478,10 @@ export default function App() {
 
   // ============ DASHBOARD (admin) ============
   const Dashboard = () => {
-    const dashTab = dashTab2; const setDashTab = setDashTab2;
-    const dashSearch = dashSearch2; const setDashSearch = setDashSearch2;
-    const dashFCli = dashFCli2; const setDashFCli = setDashFCli2;
-    const dashFProv = dashFProv2; const setDashFProv = setDashFProv2;
+    const [dashTab, setDashTab] = useState("fletes");
+    const [dashSearch, setDashSearch] = useState("");
+    const [dashFCli, setDashFCli] = useState("ALL");
+    const [dashFProv, setDashFProv] = useState("ALL");
     const act = data.fantasmas.filter(f => f.estado !== "CERRADO");
 
     // Admin cash (separated USD/MXN)
@@ -2849,9 +2836,10 @@ export default function App() {
         showSelect: vFiltro === "sin_sobre" || vFiltro === "pagado_cliente" }
     ];
 
-    const pendientesPago = data.fantasmas.filter(f => f.estado !== "CERRADO" && (!f.clientePago || (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido))));
-    const totalPorCobrarMerc = pendientesPago.reduce((s, f) => s + (f.clientePago ? 0 : (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
-    const totalPorCobrarFlete = pendientesPago.reduce((s, f) => s + (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
+    const pendientesMerc = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.clientePago);
+    const pendientesFlete = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.clientePago && !f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido));
+    const totalPorCobrarMerc = pendientesMerc.reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
+    const totalPorCobrarFlete = pendientesFlete.reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
     const selCount = Object.keys(selPedidos).filter(k => selPedidos[k]).length;
 
     const marcarSobreEnviado = (origen) => {
@@ -2927,12 +2915,12 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 Pedidos</h2>
-          <Btn onClick={() => { setNewF(EMPTY_FORM); setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
-          <Stat label="Merc. por recibir" value={fmt(totalPorCobrarMerc)} color="#DC2626" icon={<I.Dollar />} sub={`${pendientesPago.filter(f => !f.clientePago).length} pedidos`} />
-          <Stat label="Flete por recibir" value={fmt(totalPorCobrarFlete)} color="#2563EB" icon={<I.Truck />} sub={`${pendientesPago.filter(f => !f.fletePagado && f.costoFlete > 0).length} pedidos`} />
+          <Stat label="Merc. por recibir" value={fmt(totalPorCobrarMerc)} color="#DC2626" icon={<I.Dollar />} sub={`${pendientesMerc.length} pedidos`} />
+          <Stat label="Flete por recibir" value={fmt(totalPorCobrarFlete)} color="#2563EB" icon={<I.Truck />} sub={`${pendientesFlete.length} pedidos`} />
         </div>
 
         {/* Search */}
@@ -2960,14 +2948,13 @@ export default function App() {
           </div>
         ))}
 
-        {/* Pendientes de pago */}
-        {pendientesPago.length > 0 && (
+        {/* Pendientes de pago — solo mercancía */}
+        {pendientesMerc.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>💸 Pendientes de pago ({pendientesPago.length})</div>
-            {pendientesPago.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0)).map(f => {
-              const dm = f.clientePago ? 0 : (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0);
-              const df = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? 0 : (f.costoFlete || 0) - (f.abonoFlete || 0);
-              return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ display: "flex", gap: 10, fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}{df > 0 && <span style={{ color: "#2563EB", fontWeight: 600 }}>🚛 {fmt(df)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>👻 Mercancía pendiente ({pendientesMerc.length})</div>
+            {pendientesMerc.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0)).map(f => {
+              const dm = (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0);
+              return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
             })}
           </div>
         )}
@@ -4099,7 +4086,7 @@ export default function App() {
     // Flujo de Efectivo
     // TransferenciasTJ
     const TransferenciasTJ = () => {
-      const [showTrans, setShowTrans] = useState(false);
+          const [showTrans, setShowTrans] = useState(false);
       const [editId, setEditId] = useState(null);
       const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
 
@@ -4324,6 +4311,211 @@ export default function App() {
       );
     };
 
+    const PagosList = () => {
+      const [busqueda, setBusqueda] = useState("");
+      const [filtro, setFiltro] = useState("ALL");
+      const isMerc = pagoTab === "mercancia";
+      const allPedidos = dfFantasmas.filter(f => f.estado !== "CERRADO");
+      const pagados = allPedidos.filter(f => isMerc ? f.clientePago : (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido)));
+      const pendientes = allPedidos.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && f.costoFlete > 0));
+      const totalPag = isMerc ? totalCobradoMerc : totalCobradoFlete;
+      const totalPen = isMerc ? totalPendMerc : totalPendFlete;
+      const totalGen = allPedidos.reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
+      const thS = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: isMerc ? "#991B1B" : "#1E40AF", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap" };
+      const tdS = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6", fontSize: 11 };
+      const keyword = isMerc ? "mercancía" : "flete";
+      const allMovs = allPedidos.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada" && (m.concepto || "").toLowerCase().includes(keyword)));
+      const cashUSD = allMovs.reduce((s, m) => s + (m.montoUSD || (m.montoMXN ? 0 : m.monto) || 0), 0);
+      const cashMXN = allMovs.reduce((s, m) => s + (m.montoMXN || 0), 0);
+
+      const filtrar = (lista) => {
+        let r = lista;
+        if (busqueda) {
+          const s = busqueda.toLowerCase();
+          r = r.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
+        }
+        return r;
+      };
+
+      const pendientesFiltrados = filtrar(pendientes);
+      const pagadosFiltrados = filtrar(pagados);
+      const mostrarPend = filtro !== "pagados";
+      const mostrarPag = filtro !== "pendientes";
+
+      return (
+        <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 120px", background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280", textTransform: "uppercase" }}>Total {isMerc ? "mercancía" : "flete"}</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#374151" }}>{fmt(totalGen)}</div></div>
+            <div style={{ flex: "1 1 120px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>Recibido</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div><div style={{ fontSize: 9, color: "#6B7280" }}>{pagados.length} pedidos</div></div>
+            <div style={{ flex: "1 1 120px", background: "#FEF2F2", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B", textTransform: "uppercase" }}>Pendiente</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPen)}</div><div style={{ fontSize: 9, color: "#6B7280" }}>{pendientes.length} pedidos</div></div>
+            <div style={{ display: "flex", alignItems: "center" }}><Btn onClick={() => { setCobForm({ tipo: pagoTab, pedidoId: "", monto: "", fecha: today(), nota: "", montoMXN: "", tipoCambio: "" }); setShowCobro(true); }}><I.Plus /> Registrar pago</Btn></div>
+          </div>
+
+          {/* Buscador y filtros */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 180, position: "relative" }}>
+              <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." style={{ width: "100%", padding: "8px 10px 8px 28px", borderRadius: 7, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box", background: "#FAFAFA" }} />
+            </div>
+            <div style={{ display: "flex", gap: 2, background: "#F3F4F6", borderRadius: 7, padding: 2 }}>
+              {[
+                { k: "todos", l: "Todos" },
+                { k: "pendientes", l: `⏳ Pendientes (${pendientes.length})` },
+                { k: "pagados", l: `✅ Pagados (${pagados.length})` },
+              ].map(f => (
+                <button key={f.k} onClick={() => setFiltro(f.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", background: filtro === f.k ? "#fff" : "transparent", boxShadow: filtro === f.k ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: filtro === f.k ? 700 : 500, fontFamily: "inherit", color: filtro === f.k ? "#1A2744" : "#6B7280", whiteSpace: "nowrap" }}>{f.l}</button>
+              ))}
+            </div>
+            {busqueda && <button onClick={() => setBusqueda("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 11, fontFamily: "inherit" }}>✕ Limpiar</button>}
+          </div>
+          {/* USD / MXN breakdown */}
+          {(cashUSD > 0 || cashMXN > 0) && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "8px 14px", border: "1px solid #E5E7EB", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🇺🇸</span>
+                <div><div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>Efectivo USD</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(cashUSD)}</div></div>
+              </div>
+              {cashMXN > 0 && <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "8px 14px", border: "1px solid #FDE68A", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🇲🇽</span>
+                <div><div style={{ fontSize: 9, fontWeight: 600, color: "#92400E", textTransform: "uppercase" }}>Efectivo MXN</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#D97706" }}>${cashMXN.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></div>
+              </div>}
+            </div>
+          )}
+
+          {/* Pendientes */}
+          {mostrarPend && pendientesFiltrados.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: isMerc ? "#DC2626" : "#2563EB", marginBottom: 6 }}>{isMerc ? "👻" : "🚛"} Pendientes de pago ({pendientesFiltrados.length})</div>
+              <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 350 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+                  <thead><tr>
+                    <th style={thS}>Folio</th><th style={thS}>Cliente</th><th style={thS}>Mercancía</th><th style={thS}>Empaque</th>
+                    <th style={{ ...thS, textAlign: "right" }}>Total</th><th style={{ ...thS, textAlign: "right" }}>Abonado</th>
+                    <th style={{ ...thS, textAlign: "right" }}>Debe</th><th style={thS}>Estado</th><th style={{ ...thS, width: 30 }}></th>
+                  </tr></thead>
+                  <tbody>{pendientesFiltrados.map((f, i) => {
+                    const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
+                    const ab = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
+                    return (
+                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
+                        <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
+                        <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
+                        <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
+                        <td style={{ ...tdS, color: "#6B7280" }}>{f.cantBultos || 1} {f.empaque || "—"}</td>
+                        <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace" }}>{fmt(tot)}</td>
+                        <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: ab > 0 ? "#D97706" : "#9CA3AF" }}>{ab > 0 ? fmt(ab) : "—"}</td>
+                        <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{fmt(tot - ab)}</td>
+                        <td style={{ ...tdS, padding: "4px 6px" }}><Badge estado={f.estado} /></td>
+                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {mostrarPend && pendientesFiltrados.length === 0 && filtro !== "pagados" && (
+            <div style={{ textAlign: "center", padding: "16px 0", color: "#9CA3AF", fontSize: 12, marginBottom: 12 }}>
+              {busqueda ? `Sin resultados para "${busqueda}"` : "✅ No hay pendientes"}
+            </div>
+          )}
+
+          {/* Pagados */}
+          {mostrarPag && pagadosFiltrados.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#059669", marginBottom: 6 }}>✅ {isMerc ? "Fantasmas" : "Fletes"} pagados ({pagadosFiltrados.length})</div>
+              <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 350 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+                  <thead><tr>
+                    <th style={{ ...thS, background: "#065F46" }}>Folio</th><th style={{ ...thS, background: "#065F46" }}>Cliente</th>
+                    <th style={{ ...thS, background: "#065F46" }}>Mercancía</th><th style={{ ...thS, background: "#065F46" }}>Empaque</th>
+                    <th style={{ ...thS, background: "#065F46", textAlign: "right" }}>Total</th>
+                    <th style={{ ...thS, background: "#065F46" }}>Estado</th><th style={{ ...thS, background: "#065F46", width: 30 }}></th>
+                  </tr></thead>
+                  <tbody>{pagadosFiltrados.map((f, i) => {
+                    const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
+                    return (
+                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
+                        <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
+                        <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
+                        <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
+                        <td style={{ ...tdS, color: "#6B7280" }}>{f.cantBultos || 1} {f.empaque || "—"}</td>
+                        <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: "#059669", fontWeight: 600 }}>{fmt(tot)}</td>
+                        <td style={{ ...tdS, color: "#059669", fontWeight: 600 }}>✓ PAGADO</td>
+                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {filtro === "todos" && pendientesFiltrados.length === 0 && pagadosFiltrados.length === 0 && (
+            <div style={{ textAlign: "center", padding: 30, color: "#9CA3AF", fontSize: 11 }}>No hay pedidos {busqueda ? `para "${busqueda}"` : "en este período"}.</div>
+          )}
+
+          {/* Movimientos registrados */}
+          {(() => {
+            const keyword = isMerc ? "mercancía" : "flete";
+            const movs = allPedidos.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada" && (m.concepto || "").toLowerCase().includes(keyword)).map(m => ({ ...m, fId: f.id, cliente: f.cliente, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+            if (movs.length === 0) return null;
+            return (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📋 Movimientos registrados ({movs.length})</div>
+                <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 300 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+                    <thead><tr>
+                      <th style={{ ...thS, background: "#374151" }}>Fecha</th>
+                      <th style={{ ...thS, background: "#374151" }}>Folio</th>
+                      <th style={{ ...thS, background: "#374151" }}>Cliente</th>
+                      <th style={{ ...thS, background: "#374151" }}>Descripción</th>
+                      <th style={{ ...thS, background: "#374151", textAlign: "right" }}>Monto</th>
+                      <th style={{ ...thS, background: "#374151" }}>Nota</th>
+                      <th style={{ ...thS, background: "#374151", width: 60 }}>Acciones</th>
+                    </tr></thead>
+                    <tbody>{movs.map((m, i) => {
+                      const nota = (m.concepto || "").includes("—") ? (m.concepto.split("—")[1] || "").trim() : "";
+                      return (
+                        <tr key={`${m.fId}-${m.id}`} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                          <td style={{ ...tdS, color: "#6B7280", whiteSpace: "nowrap" }}>{fmtD(m.fecha)}</td>
+                          <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{m.fId}</td>
+                          <td style={{ ...tdS, fontWeight: 600 }}>{m.cliente}</td>
+                          <td style={{ ...tdS, color: "#6B7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.desc}</td>
+                          <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>+{fmt(m.monto)}{m.montoMXN > 0 && <div style={{ fontSize: 8, color: "#92400E", fontWeight: 600 }}>🇲🇽 {fmt(m.montoMXN)} MXN @{m.tipoCambio}</div>}{m.montoUSD > 0 && m.montoMXN > 0 && <div style={{ fontSize: 8, color: "#065F46" }}>🇺🇸 {fmt(m.montoUSD)} USD</div>}</td>
+                          <td style={{ ...tdS, color: "#9CA3AF", fontSize: 10, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nota || "—"}</td>
+                          <td style={{ ...tdS, padding: "4px", textAlign: "center" }}>
+                            <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
+                              <button onClick={() => setEditMov({ fId: m.fId, movId: m.id, monto: String(m.monto), fecha: m.fecha, nota })} style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", padding: 2, fontSize: 10 }} onMouseEnter={e => e.currentTarget.style.color = "#2563EB"} onMouseLeave={e => e.currentTarget.style.color = "#9CA3AF"}><I.Edit /></button>
+                              <button onClick={() => {
+                                const f = data.fantasmas.find(x => x.id === m.fId);
+                                if (!f) return;
+                                const newMovs = (f.movimientos || []).filter(x => x.id !== m.id);
+                                const isMerc2 = (m.concepto || "").toLowerCase().includes("mercancía");
+                                let upd2 = { movimientos: newMovs };
+                                if (isMerc2) {
+                                  const na = Math.max(0, (f.abonoMercancia || 0) - m.monto);
+                                  upd2.abonoMercancia = na; upd2.clientePago = na >= (f.totalVenta || f.costoMercancia); upd2.clientePagoMonto = na;
+                                } else {
+                                  const na = Math.max(0, (f.abonoFlete || 0) - m.monto);
+                                  upd2.abonoFlete = na; upd2.fletePagado = na >= (f.costoFlete || 0);
+                                }
+                                upd2.historial = [...(f.historial || []), { fecha: today(), accion: `🗑️ Pago eliminado: ${fmt(m.monto)}`, quien: role }];
+                                persist({ ...data, fantasmas: data.fantasmas.map(x => x.id !== m.fId ? x : { ...x, ...upd2, fechaActualizacion: today() }) });
+                              }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2, fontSize: 10 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    };
+
     const FlujoEfectivo = () => {
       const subTab = efSubTab; const setSubTab = setEfSubTab;
       const [showGasto, setShowGasto] = useState(false);
@@ -4455,212 +4647,7 @@ export default function App() {
                 <button onClick={() => setPagoTab("mercancia")} style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: "none", background: pagoTab === "mercancia" ? "#fff" : "transparent", boxShadow: pagoTab === "mercancia" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: pagoTab === "mercancia" ? 700 : 500, fontFamily: "inherit", color: pagoTab === "mercancia" ? "#DC2626" : "#6B7280" }}>👻 Fantasmas (Mercancía)</button>
                 <button onClick={() => setPagoTab("flete")} style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: "none", background: pagoTab === "flete" ? "#fff" : "transparent", boxShadow: pagoTab === "flete" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: pagoTab === "flete" ? 700 : 500, fontFamily: "inherit", color: pagoTab === "flete" ? "#2563EB" : "#6B7280" }}>🚛 Fletes</button>
               </div>
-              {(() => {
-                const isMerc = pagoTab === "mercancia";
-                const allPedidos = dfFantasmas.filter(f => f.estado !== "CERRADO");
-                const pagados = allPedidos.filter(f => isMerc ? f.clientePago : (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido)));
-                const pendientes = allPedidos.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && f.costoFlete > 0));
-                const totalPag = isMerc ? totalCobradoMerc : totalCobradoFlete;
-                const totalPen = isMerc ? totalPendMerc : totalPendFlete;
-                const totalGen = allPedidos.reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
-                const thS = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: isMerc ? "#991B1B" : "#1E40AF", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap" };
-                const tdS = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6", fontSize: 11 };
-                const keyword = isMerc ? "mercancía" : "flete";
-                const allMovs = allPedidos.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada" && (m.concepto || "").toLowerCase().includes(keyword)));
-                const cashUSD = allMovs.reduce((s, m) => s + (m.montoUSD || (m.montoMXN ? 0 : m.monto) || 0), 0);
-                const cashMXN = allMovs.reduce((s, m) => s + (m.montoMXN || 0), 0);
-
-                // Search + filter state (inline vars usando closure)
-                const busqueda = efSearch; const setBusqueda = setEfSearch;
-                const filtro = efTipo; const setFiltro = setEfTipo;
-
-                const filtrar = (lista) => {
-                  let r = lista;
-                  if (busqueda) {
-                    const s = busqueda.toLowerCase();
-                    r = r.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
-                  }
-                  return r;
-                };
-
-                const pendientesFiltrados = filtrar(pendientes);
-                const pagadosFiltrados = filtrar(pagados);
-                const mostrarPend = filtro !== "pagados";
-                const mostrarPag = filtro !== "pendientes";
-
-                return (
-                  <div>
-                    <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                      <div style={{ flex: "1 1 120px", background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280", textTransform: "uppercase" }}>Total {isMerc ? "mercancía" : "flete"}</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#374151" }}>{fmt(totalGen)}</div></div>
-                      <div style={{ flex: "1 1 120px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>Recibido</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div><div style={{ fontSize: 9, color: "#6B7280" }}>{pagados.length} pedidos</div></div>
-                      <div style={{ flex: "1 1 120px", background: "#FEF2F2", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B", textTransform: "uppercase" }}>Pendiente</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPen)}</div><div style={{ fontSize: 9, color: "#6B7280" }}>{pendientes.length} pedidos</div></div>
-                      <div style={{ display: "flex", alignItems: "center" }}><Btn onClick={() => { setCobForm({ tipo: pagoTab, pedidoId: "", monto: "", fecha: today(), nota: "", montoMXN: "", tipoCambio: "" }); setShowCobro(true); }}><I.Plus /> Registrar pago</Btn></div>
-                    </div>
-
-                    {/* Buscador y filtros */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                      <div style={{ flex: 1, minWidth: 180, position: "relative" }}>
-                        <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
-                        <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." style={{ width: "100%", padding: "8px 10px 8px 28px", borderRadius: 7, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box", background: "#FAFAFA" }} />
-                      </div>
-                      <div style={{ display: "flex", gap: 2, background: "#F3F4F6", borderRadius: 7, padding: 2 }}>
-                        {[
-                          { k: "todos", l: "Todos" },
-                          { k: "pendientes", l: `⏳ Pendientes (${pendientes.length})` },
-                          { k: "pagados", l: `✅ Pagados (${pagados.length})` },
-                        ].map(f => (
-                          <button key={f.k} onClick={() => setFiltro(f.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", background: filtro === f.k ? "#fff" : "transparent", boxShadow: filtro === f.k ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: filtro === f.k ? 700 : 500, fontFamily: "inherit", color: filtro === f.k ? "#1A2744" : "#6B7280", whiteSpace: "nowrap" }}>{f.l}</button>
-                        ))}
-                      </div>
-                      {busqueda && <button onClick={() => setBusqueda("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 11, fontFamily: "inherit" }}>✕ Limpiar</button>}
-                    </div>
-                    {/* USD / MXN breakdown */}
-                    {(cashUSD > 0 || cashMXN > 0) && (
-                      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                        <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "8px 14px", border: "1px solid #E5E7EB", display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16 }}>🇺🇸</span>
-                          <div><div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>Efectivo USD</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(cashUSD)}</div></div>
-                        </div>
-                        {cashMXN > 0 && <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "8px 14px", border: "1px solid #FDE68A", display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16 }}>🇲🇽</span>
-                          <div><div style={{ fontSize: 9, fontWeight: 600, color: "#92400E", textTransform: "uppercase" }}>Efectivo MXN</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#D97706" }}>${cashMXN.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></div>
-                        </div>}
-                      </div>
-                    )}
-
-                    {/* Pendientes */}
-                    {mostrarPend && pendientesFiltrados.length > 0 && (
-                      <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: isMerc ? "#DC2626" : "#2563EB", marginBottom: 6 }}>{isMerc ? "👻" : "🚛"} Pendientes de pago ({pendientesFiltrados.length})</div>
-                        <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 350 }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
-                            <thead><tr>
-                              <th style={thS}>Folio</th><th style={thS}>Cliente</th><th style={thS}>Mercancía</th><th style={thS}>Empaque</th>
-                              <th style={{ ...thS, textAlign: "right" }}>Total</th><th style={{ ...thS, textAlign: "right" }}>Abonado</th>
-                              <th style={{ ...thS, textAlign: "right" }}>Debe</th><th style={thS}>Estado</th><th style={{ ...thS, width: 30 }}></th>
-                            </tr></thead>
-                            <tbody>{pendientesFiltrados.map((f, i) => {
-                              const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
-                              const ab = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
-                              return (
-                                <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
-                                  <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
-                                  <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
-                                  <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
-                                  <td style={{ ...tdS, color: "#6B7280" }}>{f.cantBultos || 1} {f.empaque || "—"}</td>
-                                  <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace" }}>{fmt(tot)}</td>
-                                  <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: ab > 0 ? "#D97706" : "#9CA3AF" }}>{ab > 0 ? fmt(ab) : "—"}</td>
-                                  <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{fmt(tot - ab)}</td>
-                                  <td style={{ ...tdS, padding: "4px 6px" }}><Badge estado={f.estado} /></td>
-                                  <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
-                                </tr>
-                              );
-                            })}</tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                    {mostrarPend && pendientesFiltrados.length === 0 && filtro !== "pagados" && (
-                      <div style={{ textAlign: "center", padding: "16px 0", color: "#9CA3AF", fontSize: 12, marginBottom: 12 }}>
-                        {busqueda ? `Sin resultados para "${busqueda}"` : "✅ No hay pendientes"}
-                      </div>
-                    )}
-
-                    {/* Pagados */}
-                    {mostrarPag && pagadosFiltrados.length > 0 && (
-                      <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#059669", marginBottom: 6 }}>✅ {isMerc ? "Fantasmas" : "Fletes"} pagados ({pagadosFiltrados.length})</div>
-                        <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 350 }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
-                            <thead><tr>
-                              <th style={{ ...thS, background: "#065F46" }}>Folio</th><th style={{ ...thS, background: "#065F46" }}>Cliente</th>
-                              <th style={{ ...thS, background: "#065F46" }}>Mercancía</th><th style={{ ...thS, background: "#065F46" }}>Empaque</th>
-                              <th style={{ ...thS, background: "#065F46", textAlign: "right" }}>Total</th>
-                              <th style={{ ...thS, background: "#065F46" }}>Estado</th><th style={{ ...thS, background: "#065F46", width: 30 }}></th>
-                            </tr></thead>
-                            <tbody>{pagadosFiltrados.map((f, i) => {
-                              const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
-                              return (
-                                <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
-                                  <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
-                                  <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
-                                  <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
-                                  <td style={{ ...tdS, color: "#6B7280" }}>{f.cantBultos || 1} {f.empaque || "—"}</td>
-                                  <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: "#059669", fontWeight: 600 }}>{fmt(tot)}</td>
-                                  <td style={{ ...tdS, color: "#059669", fontWeight: 600 }}>✓ PAGADO</td>
-                                  <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
-                                </tr>
-                              );
-                            })}</tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                    {filtro === "todos" && pendientesFiltrados.length === 0 && pagadosFiltrados.length === 0 && (
-                      <div style={{ textAlign: "center", padding: 30, color: "#9CA3AF", fontSize: 11 }}>No hay pedidos {busqueda ? `para "${busqueda}"` : "en este período"}.</div>
-                    )}
-
-                    {/* Movimientos registrados */}
-                    {(() => {
-                      const keyword = isMerc ? "mercancía" : "flete";
-                      const movs = allPedidos.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada" && (m.concepto || "").toLowerCase().includes(keyword)).map(m => ({ ...m, fId: f.id, cliente: f.cliente, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-                      if (movs.length === 0) return null;
-                      return (
-                        <div style={{ marginTop: 16 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📋 Movimientos registrados ({movs.length})</div>
-                          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: 300 }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
-                              <thead><tr>
-                                <th style={{ ...thS, background: "#374151" }}>Fecha</th>
-                                <th style={{ ...thS, background: "#374151" }}>Folio</th>
-                                <th style={{ ...thS, background: "#374151" }}>Cliente</th>
-                                <th style={{ ...thS, background: "#374151" }}>Descripción</th>
-                                <th style={{ ...thS, background: "#374151", textAlign: "right" }}>Monto</th>
-                                <th style={{ ...thS, background: "#374151" }}>Nota</th>
-                                <th style={{ ...thS, background: "#374151", width: 60 }}>Acciones</th>
-                              </tr></thead>
-                              <tbody>{movs.map((m, i) => {
-                                const nota = (m.concepto || "").includes("—") ? (m.concepto.split("—")[1] || "").trim() : "";
-                                return (
-                                  <tr key={`${m.fId}-${m.id}`} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                                    <td style={{ ...tdS, color: "#6B7280", whiteSpace: "nowrap" }}>{fmtD(m.fecha)}</td>
-                                    <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{m.fId}</td>
-                                    <td style={{ ...tdS, fontWeight: 600 }}>{m.cliente}</td>
-                                    <td style={{ ...tdS, color: "#6B7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.desc}</td>
-                                    <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>+{fmt(m.monto)}{m.montoMXN > 0 && <div style={{ fontSize: 8, color: "#92400E", fontWeight: 600 }}>🇲🇽 {fmt(m.montoMXN)} MXN @{m.tipoCambio}</div>}{m.montoUSD > 0 && m.montoMXN > 0 && <div style={{ fontSize: 8, color: "#065F46" }}>🇺🇸 {fmt(m.montoUSD)} USD</div>}</td>
-                                    <td style={{ ...tdS, color: "#9CA3AF", fontSize: 10, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nota || "—"}</td>
-                                    <td style={{ ...tdS, padding: "4px", textAlign: "center" }}>
-                                      <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
-                                        <button onClick={() => setEditMov({ fId: m.fId, movId: m.id, monto: String(m.monto), fecha: m.fecha, nota })} style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", padding: 2, fontSize: 10 }} onMouseEnter={e => e.currentTarget.style.color = "#2563EB"} onMouseLeave={e => e.currentTarget.style.color = "#9CA3AF"}><I.Edit /></button>
-                                        <button onClick={() => {
-                                          const f = data.fantasmas.find(x => x.id === m.fId);
-                                          if (!f) return;
-                                          const newMovs = (f.movimientos || []).filter(x => x.id !== m.id);
-                                          const isMerc2 = (m.concepto || "").toLowerCase().includes("mercancía");
-                                          let upd2 = { movimientos: newMovs };
-                                          if (isMerc2) {
-                                            const na = Math.max(0, (f.abonoMercancia || 0) - m.monto);
-                                            upd2.abonoMercancia = na; upd2.clientePago = na >= (f.totalVenta || f.costoMercancia); upd2.clientePagoMonto = na;
-                                          } else {
-                                            const na = Math.max(0, (f.abonoFlete || 0) - m.monto);
-                                            upd2.abonoFlete = na; upd2.fletePagado = na >= (f.costoFlete || 0);
-                                          }
-                                          upd2.historial = [...(f.historial || []), { fecha: today(), accion: `🗑️ Pago eliminado: ${fmt(m.monto)}`, quien: role }];
-                                          persist({ ...data, fantasmas: data.fantasmas.map(x => x.id !== m.fId ? x : { ...x, ...upd2, fechaActualizacion: today() }) });
-                                        }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2, fontSize: 10 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}</tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })()}
+              <PagosList />
 
               {/* Edit movement modal */}
               {editMov && (
@@ -5032,6 +5019,8 @@ export default function App() {
     };
 
 
+    const [efSearch, setEfSearch] = useState("");
+    const [efTipo, setEfTipo] = useState("ALL");
     const efS = efSearch.toLowerCase();
     const filteredMovs = movs.filter(m => (efMoneda === "ALL" || m.moneda === efMoneda || (efMoneda === "USD" && m.moneda !== "MXN")) && (efTipo === "ALL" || m.tipoMov === efTipo) && (!efS || (m.concepto || "").toLowerCase().includes(efS) || (m.nota || "").toLowerCase().includes(efS) || (m.destino || "").toLowerCase().includes(efS) || (m.origen || "").toLowerCase().includes(efS)));
     const sortedMovs = [...filteredMovs].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || b.id - a.id);
@@ -5386,7 +5375,7 @@ export default function App() {
 
   // ============ ADMIN ADELANTOS (standalone tab) ============
   const AdminAdelantos = () => {
-    const [showAdelanto, setShowAdelanto] = useState(false);
+      const [showAdelanto, setShowAdelanto] = useState(false);
     const [showRecuperar, setShowRecuperar] = useState(null);
     const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "efectivo" });
     const [adelForm, setAdelForm] = useState({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
@@ -5504,10 +5493,10 @@ export default function App() {
 
   // ============ CUENTAS ============
   const CuentasPage = () => {
-    const cuentasTab = cuentasTab2; const setCuentasTab = setCuentasTab2;
+    const [cuentasTab, setCuentasTab] = useState("cobrar");
     const [fondoModal, setFondoModal] = useState(null); // { key, label, color, tipo: "agregar"|"retirar" }
     const [fondoMonto, setFondoMonto] = useState("");
-    const cxpExpand = cxpExpand2; const setCxpExpand = setCxpExpand2;
+    const [cxpExpand, setCxpExpand] = useState(null);
     const [cxpSort, setCxpSort] = useState("alfa");
     const [cxpFilter, setCxpFilter] = useState("pendientes");
     const [cxpSearch, setCxpSearch] = useState("");
@@ -6491,7 +6480,7 @@ export default function App() {
         {view === "clientes" && <Clientes />}
         {view === "proveedores" && <Proveedores />}
       </main>
-      {showNew && <NewForm />}
+      <NewForm />
       {showColchon && <ColchonModal />}
       {/* Global dialog modal - replaces window.alert and window.confirm */}
       {dialog && (
