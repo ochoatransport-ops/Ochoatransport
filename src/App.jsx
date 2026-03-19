@@ -640,12 +640,23 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(false);
-  const [view, setView] = useState("main");
+  const [view, setView] = useState(() => {
+    // On reload, restore correct home view based on saved role
+    try {
+      const savedRole = localStorage.getItem("ot_role");
+      if (savedRole) {
+        const u = USERS.find(x => x.role === savedRole);
+        return u?.startView === "main" ? "home" : u?.startView || "home";
+      }
+    } catch {}
+    return "main";
+  });
   const [prevView, setPrevView] = useState("main");
   const [selId, setSelId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
   const [showTransApp, setShowTransApp] = useState(false);
+  const [tFormApp, setTFormApp] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: "", nota: "", tipo: "flete" });
   const [search, setSearch] = useState("");
   const [fEst, setFEst] = useState("ALL");
 
@@ -2854,7 +2865,8 @@ export default function App() {
 
     // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
     const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && t.confirmada === true);
-    const sinSobre = pedidosNuevos.filter(f => (!f.dineroStatus || f.dineroStatus === "SIN_FONDOS") && f.dineroStatus !== "TRANS_PENDIENTE");
+    // sinSobre = pedidos sin sobre: sin fondos + pagados por cliente (tienen dinero, pueden enviar sobre)
+    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO");
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
     const sobreEnviado = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_CAMINO");
     const pagadoCliente = pedidosNuevos.filter(f => ["FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO"].includes(f.dineroStatus));
@@ -2866,7 +2878,6 @@ export default function App() {
       { key: "sin_sobre", label: "💵 Sin sobre", items: sinSobre, color: "#DC2626", showSelect: true },
       { key: "trans_pendiente", label: "🏦 Transferencia pendiente", items: transPendientes, color: "#7C3AED", showSelect: false },
       { key: "sobre_listo", label: "📋 Sobre listo", items: sobreListo, color: "#2563EB", showSelect: true },
-      { key: "pagado_cliente", label: "💰 Pagado por cliente", items: pagadoCliente, color: "#EC4899", showSelect: false },
       { key: "sobre_enviado", label: "📨 Sobre enviado a USA", items: sobreEnviado, color: "#7C3AED", showSelect: false },
       { key: "con_dinero", label: "✅ Dinero en USA", items: conDineroV, color: "#059669", showSelect: false },
     ] : vFiltro === "sobre_listo" ? [
@@ -4153,7 +4164,7 @@ export default function App() {
       const [tjTransSearch, setTjTransSearch] = useState("");
       const showTrans = showTransApp; const setShowTrans = setShowTransApp;
       const [editId, setEditId] = useState(null);
-      const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
+      const tForm = tFormApp; const setTForm = setTFormApp;
 
       const CUENTAS = [
         { id: "scotiabank", banco: "SCOTIABANK", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "5579 2091 5461 3159", clabe: "044028256059014716", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
