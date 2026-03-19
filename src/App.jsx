@@ -340,17 +340,37 @@ export default function App() {
   const [showColchon, setShowColchon] = useState(false);
   const [search, setSearch] = useState("");
   const [fEst, setFEst] = useState("ALL");
+
+  // Browser back/forward navigation
+  const navigate = useCallback((newView, newSelId = null, newPrevView = null) => {
+    const state = { view: newView, selId: newSelId, prevView: newPrevView ?? view };
+    window.history.pushState(state, "", "#" + newView + (newSelId ? "/" + newSelId : ""));
+    setView(newView);
+    if (newSelId !== undefined) setSelId(newSelId);
+    if (newPrevView !== null) setPrevView(newPrevView);
+  }, [view]);
+
+  useEffect(() => {
+    // Set initial history state
+    window.history.replaceState({ view, selId, prevView }, "", "#" + view);
+    const onPop = (e) => {
+      if (!e.state) return;
+      setView(e.state.view || "main");
+      setSelId(e.state.selId || null);
+      setPrevView(e.state.prevView || "main");
+      setMenuOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []); // eslint-disable-line
   const [fPagoMerc, setFPagoMerc] = useState("ALL");
   const [fPagoFlete, setFPagoFlete] = useState("ALL");
   const [confirm, setConfirm] = useState(null);
   const [detailMode, setDetailMode] = useState("full");
   const [usaTab, setUsaTab] = useState("pendientes");
   const [tjTab, setTjTab] = useState("recibir");
-  const [pagoTab, setPagoTab] = useState("mercancia");
   const [atTab, setAtTab] = useState("pendientes");
   const [finTab, setFinTab] = useState("efectivo");
-  const [efSubTab, setEfSubTab] = useState("clientes");
-  const [efMoneda, setEfMoneda] = useState("ALL");
 
   // ── Global dialog system (replaces window.alert / window.confirm) ──
   const [dialog, setDialog] = useState(null);
@@ -364,7 +384,6 @@ export default function App() {
       onCancel: () => { setDialog(null); resolve(false); },
     });
   });
-  const [bSearch2, setBSearch2] = useState("");
   const [corteExp, setCorteExp] = useState(null);
   const [periodoTipo, setPeriodoTipo] = useState("semana"); // global, año, mes, semana
   const [periodoOffset, setPeriodoOffset] = useState(0); // 0=current, -1=previous, etc
@@ -692,7 +711,7 @@ export default function App() {
       });
     }
     persist(nd);
-    if (selId === id) { setSelId(null); setView("ventas"); }
+    if (selId === id) { navigate("ventas", null); }
     setConfirm(null);
   };
   const updColchon = (ch) => { persist({ ...data, colchon: { ...data.colchon, ...ch } }); };
@@ -747,7 +766,7 @@ export default function App() {
       if (user) {
         setCurrentUser(user.username);
         setRole(user.role);
-        setView("home");
+        navigate("home");
         setLoginError("");
         if (remember) {
           try { localStorage.setItem("ot_role", user.role); localStorage.setItem("ot_user", user.username); } catch {}
@@ -838,7 +857,7 @@ export default function App() {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 32 }}>
             {sections.map(s => (
-              <button key={s.k} onClick={() => setView(s.k)} style={{ background: s.bg, border: `2px solid ${s.border}`, borderRadius: 14, padding: "18px 22px", cursor: "pointer", display: "flex", alignItems: "center", gap: 16, textAlign: "left", transition: "all .2s", fontFamily: "inherit", width: "100%" }}
+              <button key={s.k} onClick={() => navigate(s.k)} style={{ background: s.bg, border: `2px solid ${s.border}`, borderRadius: 14, padding: "18px 22px", cursor: "pointer", display: "flex", alignItems: "center", gap: 16, textAlign: "left", transition: "all .2s", fontFamily: "inherit", width: "100%" }}
                 onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,.25)"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
                 <div style={{ fontSize: 32, flexShrink: 0 }}>{s.emoji}</div>
@@ -1202,7 +1221,7 @@ export default function App() {
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
         {/* Top bar */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <button onClick={() => { setView(prevView); setSelId(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", display: "flex", alignItems: "center", gap: 3, fontSize: 12, fontFamily: "inherit" }}><I.Back /> Volver</button>
+          <button onClick={() => { navigate(prevView, null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", display: "flex", alignItems: "center", gap: 3, fontSize: 12, fontFamily: "inherit" }}><I.Back /> Volver</button>
           <span style={{ color: "#D1D5DB" }}>|</span>
           <span style={{ fontSize: 11, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
           <Badge estado={f.estado} />
@@ -1424,7 +1443,7 @@ export default function App() {
           // Group by bodega for USA role
           const renderItem = (f) => {
             const rest = f.costoMercancia + f.costoFlete - (f.clientePagoMonto || 0);
-            return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .12s" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#93C5FD"} onMouseLeave={e => e.currentTarget.style.borderColor = "#E5E7EB"}>
+            return <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "border-color .12s" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#93C5FD"} onMouseLeave={e => e.currentTarget.style.borderColor = "#E5E7EB"}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
@@ -1577,22 +1596,22 @@ export default function App() {
         {/* Saldos principales */}
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>💰 Saldos</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-          <div onClick={() => { setView("finanzas"); setFinTab("efectivo"); }} style={{ flex: "1 1 170px", background: "#EFF6FF", borderRadius: 10, padding: "14px 18px", border: "2px solid #BFDBFE", cursor: "pointer" }}>
+          <div onClick={() => { navigate("finanzas"); setFinTab("efectivo"); }} style={{ flex: "1 1 170px", background: "#EFF6FF", borderRadius: 10, padding: "14px 18px", border: "2px solid #BFDBFE", cursor: "pointer" }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: "#1E40AF", textTransform: "uppercase" }}>💼 Caja Admin</div>
             <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: saldoAdmUSD >= 0 ? "#1A2744" : "#DC2626" }}>{fmt(saldoAdmUSD)}</div>
             {saldoAdmMXN !== 0 && <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: saldoAdmMXN >= 0 ? "#D97706" : "#DC2626" }}>{fmtMXND(saldoAdmMXN)}</div>}
           </div>
-          <div onClick={() => { setView("bodegausa"); setUsaTab("efectivo"); }} style={{ flex: "1 1 130px", background: "#fff", borderRadius: 10, padding: "14px 18px", border: "1px solid #BFDBFE", cursor: "pointer" }}>
+          <div onClick={() => { navigate("bodegausa"); setUsaTab("efectivo"); }} style={{ flex: "1 1 130px", background: "#fff", borderRadius: 10, padding: "14px 18px", border: "1px solid #BFDBFE", cursor: "pointer" }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: "#2563EB", textTransform: "uppercase" }}>🇺🇸 Bodega USA</div>
             <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: saldoUsaUSD >= 0 ? "#2563EB" : "#DC2626" }}>{fmt(saldoUsaUSD)}</div>
             {saldoUsaMXN !== 0 && <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: saldoUsaMXN >= 0 ? "#D97706" : "#DC2626" }}>{fmtMXND(saldoUsaMXN)}</div>}
           </div>
-          <div onClick={() => { setView("bodegausa"); setUsaTab("colchon"); }} style={{ flex: "1 1 110px", background: colPct < 30 ? "#FEF2F2" : "#FEF3C7", borderRadius: 10, padding: "14px 18px", border: colPct < 30 ? "2px solid #FECACA" : "1px solid #FDE68A", cursor: "pointer" }}>
+          <div onClick={() => { navigate("bodegausa"); setUsaTab("colchon"); }} style={{ flex: "1 1 110px", background: colPct < 30 ? "#FEF2F2" : "#FEF3C7", borderRadius: 10, padding: "14px 18px", border: colPct < 30 ? "2px solid #FECACA" : "1px solid #FDE68A", cursor: "pointer" }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: "#92400E", textTransform: "uppercase" }}>🛡️ Colchón</div>
             <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: colC }}>{fmt(c.saldoActual)}</div>
             <div style={{ fontSize: 9, color: "#9CA3AF" }}>{colPct}% de {fmt(c.montoOriginal)}</div>
           </div>
-          <div onClick={() => { setView("bodegatj"); setTjTab("efectivo"); }} style={{ flex: "1 1 130px", background: "#fff", borderRadius: 10, padding: "14px 18px", border: "1px solid #A7F3D0", cursor: "pointer" }}>
+          <div onClick={() => { navigate("bodegatj"); setTjTab("efectivo"); }} style={{ flex: "1 1 130px", background: "#fff", borderRadius: 10, padding: "14px 18px", border: "1px solid #A7F3D0", cursor: "pointer" }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: "#059669", textTransform: "uppercase" }}>🇲🇽 Bodega TJ</div>
             <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: saldoTjUSD >= 0 ? "#059669" : "#DC2626" }}>{fmt(saldoTjUSD)}</div>
             {saldoTjMXN !== 0 && <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: saldoTjMXN >= 0 ? "#D97706" : "#DC2626" }}>{fmtMXND(saldoTjMXN)}</div>}
@@ -1610,7 +1629,7 @@ export default function App() {
         </div>
 
         {/* Pipeline */}
-        {porEst.length > 0 && <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", padding: 16, marginBottom: 12 }}><h3 style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700 }}>Pipeline</h3><div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{porEst.map(e => <div key={e.key} onClick={() => { setView("list"); setFEst(e.key); }} style={{ flex: "1 1 70px", minWidth: 65, padding: "8px 5px", borderRadius: 6, textAlign: "center", background: e.color.bg, cursor: "pointer" }}><div style={{ fontSize: 18, fontWeight: 700, color: e.color.text }}>{e.count}</div><div style={{ fontSize: 8, color: e.color.text, fontWeight: 600 }}>{e.label}</div></div>)}</div></div>}
+        {porEst.length > 0 && <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", padding: 16, marginBottom: 12 }}><h3 style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700 }}>Pipeline</h3><div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{porEst.map(e => <div key={e.key} onClick={() => { navigate("list"); setFEst(e.key); }} style={{ flex: "1 1 70px", minWidth: 65, padding: "8px 5px", borderRadius: 6, textAlign: "center", background: e.color.bg, cursor: "pointer" }}><div style={{ fontSize: 18, fontWeight: 700, color: e.color.text }}>{e.count}</div><div style={{ fontSize: 8, color: e.color.text, fontWeight: 600 }}>{e.label}</div></div>)}</div></div>}
 
         {/* ⭐ Ganancias especiales pendientes */}
         {(gananciasPendientes.length > 0 || (data.bitacoraGanancias || []).length > 0) && (
@@ -1667,7 +1686,7 @@ export default function App() {
         )}
 
         {/* Alertas */}
-        {alertas.length > 0 && <div style={{ background: "#FFF7ED", borderRadius: 9, border: "1px solid #FED7AA", padding: 16, marginBottom: 14 }}><h3 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#9A3412" }}><I.Alert /> Atención ({alertas.length})</h3>{alertas.slice(0, 8).map(f => { const r = []; if (f.creditoProveedor && !f.proveedorPagado) r.push("Deuda prov."); if (!f.clientePago && f.estado === "ENTREGADO") r.push("Sin cobrar"); if (f.dineroStatus === "COLCHON_USADO") r.push("🛡️ Reponer"); const d = Math.floor((new Date() - new Date(f.fechaActualizacion)) / 864e5); if (d > 3) r.push(`${d}d`); return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", padding: "6px 10px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #FED7AA", marginBottom: 3, fontSize: 11 }}><div><span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span> <strong>{f.cliente}</strong> <span style={{ color: "#9A3412" }}>{r.join(" · ")}</span></div><I.Right /></div>; })}</div>}
+        {alertas.length > 0 && <div style={{ background: "#FFF7ED", borderRadius: 9, border: "1px solid #FED7AA", padding: 16, marginBottom: 14 }}><h3 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#9A3412" }}><I.Alert /> Atención ({alertas.length})</h3>{alertas.slice(0, 8).map(f => { const r = []; if (f.creditoProveedor && !f.proveedorPagado) r.push("Deuda prov."); if (!f.clientePago && f.estado === "ENTREGADO") r.push("Sin cobrar"); if (f.dineroStatus === "COLCHON_USADO") r.push("🛡️ Reponer"); const d = Math.floor((new Date() - new Date(f.fechaActualizacion)) / 864e5); if (d > 3) r.push(`${d}d`); return <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ background: "#fff", padding: "6px 10px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid #FED7AA", marginBottom: 3, fontSize: 11 }}><div><span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span> <strong>{f.cliente}</strong> <span style={{ color: "#9A3412" }}>{r.join(" · ")}</span></div><I.Right /></div>; })}</div>}
 
         {/* Pedidos pendientes table */}
         <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #E5E7EB", padding: 16 }}>
@@ -1723,7 +1742,7 @@ export default function App() {
                         const tot = isMerc ? f.costoMercancia : (f.costoFlete || 0);
                         const ab = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
                         return (
-                          <tr key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
+                          <tr key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
                             <td style={{ ...td, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
                             <td style={{ ...td, fontWeight: 600 }}>{f.cliente}</td>
                             <td style={{ ...td, color: "#D97706" }}>{f.proveedor || "—"}</td>
@@ -1831,7 +1850,7 @@ export default function App() {
             </tr></thead>
             <tbody>{sorted.map((f, i) => {
               const td = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6" };
-              const go = () => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); };
+              const go = () => { setDetailMode("full"); navigate("detail", f.id, view); };
               return (
                 <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
                   <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600 }}>{f.id}</td>
@@ -2100,7 +2119,7 @@ export default function App() {
                           const debeMerc = (f.totalVenta || f.costoMercancia) - (f.clientePago ? (f.totalVenta || f.costoMercancia) : (f.abonoMercancia || 0));
                           const debeFlete = (f.costoFlete || 0) - (f.fletePagado ? (f.costoFlete || 0) : (f.abonoFlete || 0));
                           return (
-                            <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
+                            <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
                               <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
                               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
                               <Badge estado={f.estado} />
@@ -2120,7 +2139,7 @@ export default function App() {
                     <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📦 Todos los pedidos</div>
                       {c.p.map(f => (
-                        <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
+                        <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
                           <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
                           <span style={{ color: "#9CA3AF", minWidth: 44 }}>{fmtD(f.fechaCreacion)}</span>
                           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
@@ -2483,7 +2502,7 @@ export default function App() {
                         {p.pendientes.map(f => {
                           const debe = f.costoMercancia - (f.abonoProveedor || 0);
                           return (
-                            <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
+                            <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
                               <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
                               <span style={{ color: "#6B7280" }}>{f.cliente}</span>
                               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
@@ -2500,7 +2519,7 @@ export default function App() {
                     <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📦 Todos los pedidos</div>
                       {p.p.map(f => (
-                        <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
+                        <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
                           <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
                           <span style={{ color: "#6B7280" }}>{f.cliente}</span>
                           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
@@ -2675,7 +2694,7 @@ export default function App() {
           <div style={{ background: "#EFF6FF", borderRadius: 10, border: "1px solid #BFDBFE", padding: 16, marginBottom: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", marginBottom: 8 }}>🏭 En bodega USA — listos para enviar ({listos.length})</div>
             {listos.map(f => (
-              <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 6px", borderBottom: "1px solid #DBEAFE", fontSize: 11, cursor: "pointer" }}>
+              <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 6px", borderBottom: "1px solid #DBEAFE", fontSize: 11, cursor: "pointer" }}>
                 <span style={{ fontFamily: "monospace", color: "#6B7280", fontSize: 10 }}>{f.id}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div><strong>{f.cliente}</strong> <span style={{ color: "#6B7280" }}>— {f.descripcion}</span></div>
@@ -2813,18 +2832,21 @@ export default function App() {
       pedidosNuevos = pedidosNuevos.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor || "").toLowerCase().includes(s) || (f.tipoMercancia || "").toLowerCase().includes(s));
     }
 
-    // Groups
-    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS");
+    // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
+    const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && (t.confirmada || !t.noRecibida));
+    const sinSobre = pedidosNuevos.filter(f => (!f.dineroStatus || f.dineroStatus === "SIN_FONDOS") && f.dineroStatus !== "TRANS_PENDIENTE");
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
     const sobreEnviado = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_CAMINO");
     const pagadoCliente = pedidosNuevos.filter(f => ["FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO"].includes(f.dineroStatus));
     const conDineroV = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO");
+    const transPendientes = pedidosNuevos.filter(f => f.dineroStatus === "TRANS_PENDIENTE");
 
     // Filter
     const grupos = vFiltro === "ALL" ? [
       { key: "sin_sobre", label: "💵 Sin sobre", items: sinSobre, color: "#DC2626", showSelect: true },
+      { key: "trans_pendiente", label: "🏦 Transferencia pendiente", items: transPendientes, color: "#7C3AED", showSelect: false },
       { key: "sobre_listo", label: "📋 Sobre listo", items: sobreListo, color: "#2563EB", showSelect: true },
-      { key: "pagado_cliente", label: "💰 Pagado por cliente", items: pagadoCliente, color: "#EC4899", showSelect: true },
+      { key: "pagado_cliente", label: "💰 Pagado por cliente", items: pagadoCliente.filter(f => !pagoConTransferencia(f)), color: "#EC4899", showSelect: true },
       { key: "sobre_enviado", label: "📨 Sobre enviado a USA", items: sobreEnviado, color: "#7C3AED", showSelect: false },
       { key: "con_dinero", label: "✅ Dinero en USA", items: conDineroV, color: "#059669", showSelect: false },
     ] : vFiltro === "sobre_listo" ? [
@@ -2833,7 +2855,7 @@ export default function App() {
       { key: vFiltro, label: vFiltro === "sin_sobre" ? "💵 Sin sobre" : vFiltro === "sobre_enviado" ? "📨 Sobre enviado" : vFiltro === "pagado_cliente" ? "💰 Pagado por cliente" : "✅ Con dinero",
         items: vFiltro === "sin_sobre" ? sinSobre : vFiltro === "sobre_enviado" ? sobreEnviado : vFiltro === "pagado_cliente" ? pagadoCliente : conDineroV,
         color: vFiltro === "sin_sobre" ? "#DC2626" : vFiltro === "sobre_enviado" ? "#7C3AED" : vFiltro === "pagado_cliente" ? "#EC4899" : "#059669",
-        showSelect: vFiltro === "sin_sobre" || vFiltro === "pagado_cliente" }
+        showSelect: vFiltro === "sin_sobre" || (vFiltro === "pagado_cliente") }
     ];
 
     const pendientesMerc = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.clientePago);
@@ -2858,8 +2880,13 @@ export default function App() {
         nd = { ...nd, fantasmas: nd.fantasmas.map(f => f.id !== fId ? f : { ...f, dineroStatus: "DINERO_CAMINO", sobreOrigen: origen, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `📨 Sobre enviado a USA (${origen === "admin" ? "💼 Caja Admin" : "🇲🇽 Caja Adolfo"})`, quien: role }] }) };
       });
       if (origen === "admin") {
-        const egr = { id: Date.now(), concepto: `SOBRE USA: ${ids.join(", ")}`, monto: totalMonto, moneda: "USD", destino: "BODEGA_USA", fecha: today(), nota: `${ids.length} pedidos`, tipoMov: "egreso" };
-        nd.gastosAdmin = [...(nd.gastosAdmin || []), egr];
+        const nuevosEgresos = ids.map((fId, i) => {
+          const f = nd.fantasmas.find(x => x.id === fId);
+          if (!f) return null;
+          const monto = f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia;
+          return { id: Date.now() + i, concepto: `SOBRE USA: ${fId} — ${f.cliente}`, monto, moneda: "USD", destino: "BODEGA_USA", fecha: today(), nota: f.descripcion || "", tipoMov: "egreso" };
+        }).filter(Boolean);
+        nd.gastosAdmin = [...(nd.gastosAdmin || []), ...nuevosEgresos];
       }
       persist(nd);
       setSelPedidos({});
@@ -2880,10 +2907,13 @@ export default function App() {
       persist(nd);
     };
 
-    const renderPedido = (f, showSelect) => (
+    const renderPedido = (f, showSelect) => {
+      const esTrans = f.dineroStatus === "TRANS_PENDIENTE" || pagoConTransferencia(f);
+      return (
       <div key={f.id} style={{ background: f.urgente ? "#FFF5F5" : selPedidos[f.id] ? "#EFF6FF" : "#fff", borderRadius: 8, border: selPedidos[f.id] ? "2px solid #93C5FD" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        {showSelect && <input type="checkbox" checked={!!selPedidos[f.id]} onChange={e => setSelPedidos({ ...selPedidos, [f.id]: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB", flexShrink: 0 }} />}
-        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }}>
+        {showSelect && !esTrans && <input type="checkbox" checked={!!selPedidos[f.id]} onChange={e => setSelPedidos({ ...selPedidos, [f.id]: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#2563EB", flexShrink: 0 }} />}
+        {showSelect && esTrans && <span title="Pagado por transferencia — el sobre lo envía Admin" style={{ fontSize: 9, background: "#F3E8FF", color: "#7C3AED", border: "1px solid #E9D5FF", borderRadius: 4, padding: "2px 5px", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>🏦 Admin</span>}
+        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "wrap" }}>
             <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
             {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
@@ -2909,7 +2939,8 @@ export default function App() {
           <I.Right />
         </div>
       </div>
-    );
+      );
+    };
 
     return (
       <div>
@@ -2954,7 +2985,7 @@ export default function App() {
             <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>👻 Mercancía pendiente ({pendientesMerc.length})</div>
             {pendientesMerc.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0)).map(f => {
               const dm = (f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0);
-              return <div key={f.id} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
+              return <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} /><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}</div></div><div style={{ fontSize: 10, flexShrink: 0 }}>{dm > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>👻 {fmt(dm)}</span>}</div><button onClick={(e) => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "#F3F4F6", color: "#D1D5DB", border: "none", borderRadius: 5, padding: "4px 6px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button><I.Right /></div>;
             })}
           </div>
         )}
@@ -2985,19 +3016,14 @@ export default function App() {
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿De dónde sale el dinero?</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {hayPedidosSinPago ? (
-                  <div style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #D1D5DB", background: "#F9FAFB", opacity: 0.6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#9CA3AF" }}>🇲🇽 Caja de Adolfo (Bodega TJ)</div>
-                    <div style={{ fontSize: 11, color: "#DC2626", marginTop: 4, fontWeight: 600 }}>⚠️ {sinPago.length} pedido{sinPago.length > 1 ? "s" : ""} sin pago del cliente:</div>
-                    <div style={{ fontSize: 10, color: "#DC2626", marginTop: 2 }}>{sinPago.map(f => `${f.id} (${f.cliente})`).join(", ")}</div>
-                    <div style={{ fontSize: 10, color: "#6B7280", marginTop: 4 }}>El cliente debe traer el dinero a bodega primero.</div>
-                  </div>
-                ) : (
-                  <button onClick={() => marcarSobreEnviado("adolfo")} style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #059669", background: "#ECFDF5", cursor: "pointer", textAlign: "left" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#065F46" }}>🇲🇽 Caja de Adolfo (Bodega TJ)</div>
+                <button onClick={() => marcarSobreEnviado("adolfo")} style={{ padding: "14px 16px", borderRadius: 10, border: `2px solid ${hayPedidosSinPago ? "#D97706" : "#059669"}`, background: hayPedidosSinPago ? "#FEF3C7" : "#ECFDF5", cursor: "pointer", textAlign: "left" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: hayPedidosSinPago ? "#92400E" : "#065F46" }}>🇲🇽 Caja de Adolfo (Bodega TJ)</div>
+                  {hayPedidosSinPago ? (
+                    <div style={{ fontSize: 10, color: "#92400E", marginTop: 4 }}>⚠️ {sinPago.length} pedido{sinPago.length > 1 ? "s" : ""} aún sin pago: {sinPago.map(f => f.cliente).join(", ")}</div>
+                  ) : (
                     <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>El cliente ya trajo el dinero a bodega</div>
-                  </button>
-                )}
+                  )}
+                </button>
                 {sinSaldoAdmin ? (
                   <div style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #D1D5DB", background: "#F9FAFB", opacity: 0.6 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#9CA3AF" }}>💼 Caja Admin (Administración)</div>
@@ -3216,6 +3242,7 @@ export default function App() {
   const BodegaUSA = () => {
     const tab = usaTab; const setTab = setUsaTab;
     const [selSobres, setSelSobres] = useState({});
+    const [usaPendTab, setUsaPendTab] = useState("pendientes");
 
     // CLEAN FILTERS: each pedido in exactly ONE tab
     // Pendientes: estado PEDIDO, sin dinero en USA (no confirmado)
@@ -3284,7 +3311,7 @@ export default function App() {
         return (
         <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: selSobres[f.id] ? "#EFF6FF" : esUrgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: selSobres[f.id] ? "2px solid #93C5FD" : esUrgente ? "2px solid #FECACA" : "1px solid #E5E7EB", cursor: "pointer", marginBottom: 4 }}>
           <input type="checkbox" checked={!!selSobres[f.id]} onChange={e => setSelSobres({ ...selSobres, [f.id]: e.target.checked })} style={{ width: 18, height: 18, accentColor: "#2563EB", flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }}>
+          <div style={{ flex: 1, minWidth: 0 }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
               <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
               {esUrgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
@@ -3308,31 +3335,47 @@ export default function App() {
 
       return (
       <div>
-        {/* Sobre en camino desde México - pueden confirmar recepción */}
-        {sobreEnCamino.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED" }}>📨 Sobre en camino desde México ({sobreEnCamino.length})</div>
-              <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sobreEnCamino.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
-            </div>
-            {sobreEnCamino.map(renderItem)}
+        {/* Sub-tabs: Pendientes / Sobres en camino */}
+        <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 14 }}>
+          <button onClick={() => setUsaPendTab("pendientes")} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "none", background: usaPendTab === "pendientes" ? "#fff" : "transparent", boxShadow: usaPendTab === "pendientes" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: usaPendTab === "pendientes" ? 700 : 500, fontFamily: "inherit", color: usaPendTab === "pendientes" ? "#DC2626" : "#6B7280" }}>
+            💵 Esperando sobre{sinSobreUSA.length > 0 && <span style={{ marginLeft: 5, background: "#DC2626", color: "#fff", borderRadius: 8, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{sinSobreUSA.length}</span>}
+          </button>
+          <button onClick={() => setUsaPendTab("camino")} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "none", background: usaPendTab === "camino" ? "#fff" : "transparent", boxShadow: usaPendTab === "camino" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: usaPendTab === "camino" ? 700 : 500, fontFamily: "inherit", color: usaPendTab === "camino" ? "#7C3AED" : "#6B7280" }}>
+            📨 Sobre en camino{sobreEnCamino.length > 0 && <span style={{ marginLeft: 5, background: "#7C3AED", color: "#fff", borderRadius: 8, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{sobreEnCamino.length}</span>}
+          </button>
+        </div>
+
+        {/* Pendientes: esperando sobre desde México */}
+        {usaPendTab === "pendientes" && (
+          <div>
+            {sinSobreUSA.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>✅</div><p style={{ fontSize: 12 }}>No hay pedidos esperando sobre.</p></div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", padding: "4px 8px", background: "#FEF3C7", borderRadius: 4, flex: 1, marginRight: 8 }}>⚠️ México no ha marcado el sobre como enviado. Solo puedes usar colchón.</div>
+                  <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sinSobreUSA.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
+                </div>
+                {sinSobreUSA.map(renderItem)}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Sin sobre - solo pueden usar colchón */}
-        {sinSobreUSA.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626" }}>💵 Esperando sobre desde México ({sinSobreUSA.length})</div>
-              <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sinSobreUSA.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
-            </div>
-            <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 6, padding: "4px 8px", background: "#FEF3C7", borderRadius: 4 }}>⚠️ México no ha marcado el sobre como enviado. Solo puedes usar colchón.</div>
-            {sinSobreUSA.map(renderItem)}
+        {/* Sobres en camino desde México */}
+        {usaPendTab === "camino" && (
+          <div>
+            {sobreEnCamino.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📭</div><p style={{ fontSize: 12 }}>No hay sobres en camino.</p></div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                  <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sobreEnCamino.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
+                </div>
+                {sobreEnCamino.map(renderItem)}
+              </div>
+            )}
           </div>
-        )}
-
-        {pendientes.length === 0 && (
-          <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>✅</div><p style={{ fontSize: 12 }}>No hay pedidos pendientes de dinero.</p></div>
         )}
 
         {/* Sticky action bar */}
@@ -3887,6 +3930,7 @@ export default function App() {
 
   // ============ BODEGA TJ (wrapper with sub-tabs) ============
   const BodegaTJ = () => {
+    const [pagoTab, setPagoTab] = useState("mercancia");
     const tab = tjTab; const setTab = setTjTab;
     const enviosPend = data.fantasmas.filter(f => f.estado === "RECOLECTADO").length;
     const enBodegaCount = data.fantasmas.filter(f => f.estado === "BODEGA_TJ").length;
@@ -4017,7 +4061,7 @@ export default function App() {
                     return (
                       <div key={f.id} style={{ background: sel ? "#EFF6FF" : f.urgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: sel ? "2px solid #93C5FD" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
                         <input type="checkbox" checked={sel} onChange={e => setSelEnt({ ...selEnt, [f.id]: e.target.checked })} style={{ width: 18, height: 18, accentColor: "#059669", flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }}>
+                        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
                             <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
                             {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
@@ -4062,7 +4106,7 @@ export default function App() {
                 const autoUrgente = !pagado && dias >= 3;
                 if (autoUrgente && !f.urgente) updF(f.id, { urgente: true });
                 return (
-                  <div key={f.id} style={{ background: autoUrgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: autoUrgente ? "2px solid #FECACA" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, cursor: "pointer" }} onClick={() => { setSelId(f.id); setDetailMode("full"); setPrevView(view); setView("detail"); }}>
+                  <div key={f.id} style={{ background: autoUrgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: autoUrgente ? "2px solid #FECACA" : "1px solid #E5E7EB", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, cursor: "pointer" }} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
@@ -4086,7 +4130,8 @@ export default function App() {
     // Flujo de Efectivo
     // TransferenciasTJ
     const TransferenciasTJ = () => {
-          const [showTrans, setShowTrans] = useState(false);
+      const [tjTransSearch, setTjTransSearch] = useState("");
+      const [showTrans, setShowTrans] = useState(false);
       const [editId, setEditId] = useState(null);
       const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
 
@@ -4140,16 +4185,25 @@ export default function App() {
         setEditId(null);
       };
 
-      const eliminarTrans = (tId) => {
-                const tr = (data.transferencias || []).find(t => t.id === tId);
+      const eliminarTrans = async (tId) => {
+        const tr = (data.transferencias || []).find(t => t.id === tId);
         if (!tr) return;
+        if (!await showConfirm(`¿Eliminar transferencia?\n\n${tr.cliente || ""} — ${tr.tipo === "flete" ? "🚛 Flete" : "👻 Fantasma"} — ${tr.montoMXN ? `$${tr.montoMXN} MXN` : fmt(tr.montoUSD)}`)) return;
         let nd = { ...data, transferencias: (data.transferencias || []).filter(t => t.id !== tId) };
-        // Revert abono
-        if (tr.tipo === "flete") {
-          nd.fantasmas = nd.fantasmas.map(f => f.id !== tr.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - (tr.montoUSD || 0)), fletePagado: Math.max(0, (f.abonoFlete || 0) - (tr.montoUSD || 0)) >= (f.costoFlete || 0) });
-        } else {
-          nd.fantasmas = nd.fantasmas.map(f => f.id !== tr.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - (tr.montoUSD || 0)), clientePago: Math.max(0, (f.abonoMercancia || 0) - (tr.montoUSD || 0)) >= f.costoMercancia });
-        }
+        // Revert pedido status
+        nd.fantasmas = nd.fantasmas.map(f => {
+          if (f.id !== tr.pedidoId) return f;
+          if (tr.tipo === "flete") {
+            const nuevoAbono = Math.max(0, (f.abonoFlete || 0) - (tr.montoUSD || 0));
+            return { ...f, abonoFlete: nuevoAbono, fletePagado: nuevoAbono >= (f.costoFlete || 0) };
+          } else {
+            const nuevoAbono = Math.max(0, (f.abonoMercancia || 0) - (tr.montoUSD || 0));
+            // Also revert TRANS_PENDIENTE status if no other pending transfers remain
+            const otrasTrans = (nd.transferencias || []).filter(t => t.pedidoId === f.id && !t.confirmada && !t.noRecibida);
+            const dineroStatus = otrasTrans.length === 0 && !nuevoAbono ? "SIN_FONDOS" : f.dineroStatus === "TRANS_PENDIENTE" && otrasTrans.length === 0 ? "SIN_FONDOS" : f.dineroStatus;
+            return { ...f, abonoMercancia: nuevoAbono, clientePago: nuevoAbono >= f.costoMercancia, transferenciaPendiente: otrasTrans.length > 0, dineroStatus };
+          }
+        });
         persist(nd);
       };
 
@@ -4216,8 +4270,21 @@ export default function App() {
               </Fld>
               <div style={{ maxHeight: 130, overflow: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8 }}>
                 {(() => {
-                  let peds = data.fantasmas.filter(f => f.estado !== "CERRADO");
+                  const isFlete = tForm.tipo === "flete";
+                  let peds = data.fantasmas.filter(f => {
+                    if (f.estado === "CERRADO") return false;
+                    // Exclude if already paid for this type
+                    if (isFlete && f.fletePagado) return false;
+                    if (!isFlete && f.clientePago) return false;
+                    // Exclude if already has a pending transfer for this type
+                    const yaTransferido = (data.transferencias || []).some(t =>
+                      t.pedidoId === f.id && t.tipo === tForm.tipo && !t.confirmada && !t.noRecibida && t.id !== editId
+                    );
+                    if (yaTransferido) return false;
+                    return true;
+                  });
                   if (tForm.pedSearch) { const s = tForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); }
+                  if (peds.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes de {isFlete ? "flete" : "fantasma"}</div>;
                   return peds.slice(0, 15).map(f => {
                     const sel = tForm.pedidoId === f.id;
                     const monto = tForm.tipo === "flete" ? (f.costoFlete || 0) : f.costoMercancia;
@@ -4397,7 +4464,7 @@ export default function App() {
                     const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
                     const ab = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
                     return (
-                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
+                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { navigate("detail", f.id, view); }}>
                         <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
                         <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
                         <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
@@ -4406,7 +4473,7 @@ export default function App() {
                         <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: ab > 0 ? "#D97706" : "#9CA3AF" }}>{ab > 0 ? fmt(ab) : "—"}</td>
                         <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{fmt(tot - ab)}</td>
                         <td style={{ ...tdS, padding: "4px 6px" }}><Badge estado={f.estado} /></td>
-                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={async () => { if (!await showConfirm(`¿Eliminar todos los pagos de ${f.cliente}?\n\nEl pedido se mantendrá pero se borrarán los abonos.`)) return; updF(f.id, { movimientos: (f.movimientos||[]).filter(m => m.tipo !== "Entrada"), abonoMercancia: 0, abonoFlete: 0, clientePago: false, clientePagoMonto: 0, fletePagado: false }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} title="Eliminar pagos (el pedido se mantiene)" onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
                       </tr>
                     );
                   })}</tbody>
@@ -4435,14 +4502,14 @@ export default function App() {
                   <tbody>{pagadosFiltrados.map((f, i) => {
                     const tot = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
                     return (
-                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { setSelId(f.id); setPrevView(view); setView("detail"); }}>
+                      <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC", cursor: "pointer" }} onClick={() => { navigate("detail", f.id, view); }}>
                         <td style={{ ...tdS, fontFamily: "monospace", fontWeight: 600 }}>{f.id}</td>
                         <td style={{ ...tdS, fontWeight: 600 }}>{f.cliente}</td>
                         <td style={{ ...tdS, color: "#6B7280", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</td>
                         <td style={{ ...tdS, color: "#6B7280" }}>{f.cantBultos || 1} {f.empaque || "—"}</td>
                         <td style={{ ...tdS, textAlign: "right", fontFamily: "monospace", color: "#059669", fontWeight: 600 }}>{fmt(tot)}</td>
                         <td style={{ ...tdS, color: "#059669", fontWeight: 600 }}>✓ PAGADO</td>
-                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={() => setConfirm(f.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+                        <td style={{ ...tdS, textAlign: "center", padding: "4px" }} onClick={e => e.stopPropagation()}><button onClick={async () => { if (!await showConfirm(`¿Eliminar todos los pagos de ${f.cliente}?\n\nEl pedido se mantendrá pero se borrarán los abonos.`)) return; updF(f.id, { movimientos: (f.movimientos||[]).filter(m => m.tipo !== "Entrada"), abonoMercancia: 0, abonoFlete: 0, clientePago: false, clientePagoMonto: 0, fletePagado: false }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} title="Eliminar pagos (el pedido se mantiene)" onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
                       </tr>
                     );
                   })}</tbody>
@@ -4517,7 +4584,7 @@ export default function App() {
     };
 
     const FlujoEfectivo = () => {
-      const subTab = efSubTab; const setSubTab = setEfSubTab;
+      const [subTab, setSubTab] = useState("clientes");
       const [showGasto, setShowGasto] = useState(false);
       const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
       const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
@@ -4723,16 +4790,6 @@ export default function App() {
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => { setShowCobro(false) }}>Cancelar</Btn><Btn disabled={!cobForm.pedidoId || (!(parseFloat(cobForm.monto) > 0) && !(parseFloat(cobForm.montoMXN) > 0))} onClick={() => { const fId = cobForm.pedidoId; const usd = parseFloat(cobForm.monto) || 0; const mxn = parseFloat(cobForm.montoMXN) || 0; const tc = parseFloat(cobForm.tipoCambio) || 0; const mxnToUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0; const totalUSD = usd + mxnToUsd; const f = data.fantasmas.find(x => x.id === fId); if (!f || totalUSD <= 0) return; const isMerc = cobForm.tipo === "mercancia"; const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnToUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + "); const mov = { id: Date.now(), tipo: "Entrada", concepto: isMerc ? `👻 Pago mercancía — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}` : `🚛 Pago flete — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}`, monto: totalUSD, montoUSD: usd, montoMXN: mxn || null, tipoCambio: tc || null, fecha: cobForm.fecha }; let upd = {}; if (isMerc) { const na = (f.abonoMercancia||0)+totalUSD; upd = { abonoMercancia: na, clientePago: na >= f.costoMercancia, clientePagoMonto: na }; } else { const na = (f.abonoFlete||0)+totalUSD; upd = { abonoFlete: na, fletePagado: na >= (f.costoFlete||0) }; } upd.movimientos = [...(f.movimientos||[]), mov]; upd.historial = [...(f.historial||[]), { fecha: cobForm.fecha, accion: `💰 Pago ${cobForm.tipo}: ${fmt(totalUSD)} (${detalle})${cobForm.nota ? " — " + cobForm.nota : ""}`, quien: role }]; upd.fechaActualizacion = today(); let nd = { ...data, fantasmas: data.fantasmas.map(x => x.id !== fId ? x : { ...x, ...upd }) }; const label = isMerc ? "PAGO FANTASMA" : "PAGO FLETE"; if (usd > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 10, concepto: `${label} ${fId} (USD)`, monto: usd, moneda: "USD", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: f.cliente, tipoMov: "ingreso" }]; } if (mxn > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 11, concepto: `${label} ${fId} (MXN)`, monto: mxn, moneda: "MXN", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: `${f.cliente} · @${tc} = ${fmt(mxnToUsd)} USD`, tipoMov: "ingreso" }]; } persist(nd); setShowCobro(false); setCobForm({...cobForm, pedidoId: "", monto: "", montoMXN: "", tipoCambio: "", nota: ""}); }} style={{ background: "#059669" }}>💰 Registrar pago</Btn></div>
                 </Modal>
               )}
-              {confirm && (() => { const cf = data.fantasmas.find(x => x.id === confirm); return cf ? (
-                <Modal title="Eliminar pedido" onClose={() => setConfirm(null)} w={380}>
-                  <p style={{ margin: "0 0 8px", fontSize: 12 }}><strong>{cf.cliente}</strong> — {cf.descripcion} ({fmt(cf.costoMercancia)})</p>
-                  {(() => { const linked = []; if (cf.fletePagadoCxp) linked.push(`Abono flete a CxP: ${cf.fletePagadoCxp} (${fmt(cf.costoFlete)})`); if (cf.dineroStatus === "DINERO_CAMINO") linked.push("Sobre en camino a USA"); if (cf.usaColchon) linked.push("Uso de colchón"); if ((cf.movimientos||[]).length > 0) linked.push(`${cf.movimientos.length} pago(s)`); if (cf.comisionCobrada) linked.push(`Comisión (${fmt(cf.comisionMonto)})`); return linked.length > 0 ? <div style={{ background: "#FEF2F2", borderRadius: 6, padding: "8px 10px", marginBottom: 10, border: "1px solid #FECACA" }}><div style={{ fontSize: 10, fontWeight: 600, color: "#991B1B", marginBottom: 4 }}>⚠️ También se eliminará:</div>{linked.map((l,i) => <div key={i} style={{ fontSize: 10, color: "#DC2626" }}>• {l}</div>)}</div> : null; })()}
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn v="secondary" onClick={() => setConfirm(null)}>Cancelar</Btn>
-                    <Btn v="danger" onClick={() => delF(cf.id)}>Sí, eliminar</Btn>
-                  </div>
-                </Modal>
-              ) : null; })()}
             </div>
           )}
 
@@ -4891,6 +4948,7 @@ export default function App() {
 
   // ============ ADMIN EFECTIVO ============
   const AdminEfectivo = () => {
+    const [efMoneda, setEfMoneda] = useState("ALL");
     const [showMov, setShowMov] = useState(false);
     const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
@@ -5375,118 +5433,237 @@ export default function App() {
 
   // ============ ADMIN ADELANTOS (standalone tab) ============
   const AdminAdelantos = () => {
-      const [showAdelanto, setShowAdelanto] = useState(false);
+    const [adelSearch, setAdelSearch] = useState("");
+    const [showAdelanto, setShowAdelanto] = useState(false);
     const [showRecuperar, setShowRecuperar] = useState(null);
-    const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "efectivo" });
+    const [adelTab, setAdelTab] = useState("pendientes");
+    const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "transferencia" });
     const [adelForm, setAdelForm] = useState({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
 
     const adelantos = data.adelantosAdmin || [];
     const adelantosPend = adelantos.filter(a => !a.recuperado);
     const adelantosRec = adelantos.filter(a => a.recuperado);
-    const totalAdelantado = adelantosPend.reduce((s, a) => s + (a.monto || 0), 0);
-    const totalRecuperado = adelantosRec.reduce((s, a) => s + (a.montoRecuperado || a.monto || 0), 0);
+    const totalPend = adelantosPend.reduce((s, a) => s + (a.monto || 0), 0);
+    const totalRec = adelantosRec.reduce((s, a) => s + (a.montoRecuperado || a.monto || 0), 0);
 
-    // Saldo admin for validation
-    const adminMovs = data.gastosAdmin || [];
-    const admIng = adminMovs.filter(m => m.destino === "ADMIN" && m.tipoMov === "ingreso").reduce((s, m) => s + (m.monto || 0), 0);
-    const admEgr = adminMovs.filter(m => m.destino === "ADMIN" && m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
-    const admEnv = adminMovs.filter(m => m.destino !== "ADMIN" && m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
-    const saldoAdmin = admIng - admEgr - admEnv;
+    const admMovs = data.gastosAdmin || [];
+    const admUSD = admMovs.filter(m => m.moneda !== "MXN");
+    const saldoAdmin = admUSD.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.montoUSD || m.monto || 0), 0) - admUSD.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.montoUSD || m.monto || 0), 0);
 
     const adelS = adelSearch.toLowerCase();
-    const filtPend = adelantosPend.filter(a => { const pf = data.fantasmas.find(x => x.id === a.pedidoId); return !adelS || (a.pedidoId || "").toLowerCase().includes(adelS) || (pf?.cliente || "").toLowerCase().includes(adelS) || (pf?.descripcion || "").toLowerCase().includes(adelS) || (a.nota || "").toLowerCase().includes(adelS); });
-    const filtRec = adelantosRec.filter(a => { const pf = data.fantasmas.find(x => x.id === a.pedidoId); return !adelS || (a.pedidoId || "").toLowerCase().includes(adelS) || (pf?.cliente || "").toLowerCase().includes(adelS) || (pf?.descripcion || "").toLowerCase().includes(adelS); });
+    const filtPend = adelantosPend.filter(a => { const pf = data.fantasmas.find(x => x.id === a.pedidoId); return !adelS || (a.pedidoId || "").toLowerCase().includes(adelS) || (pf?.cliente || "").toLowerCase().includes(adelS) || (pf?.descripcion || "").toLowerCase().includes(adelS); });
+    const filtRec = adelantosRec.filter(a => { const pf = data.fantasmas.find(x => x.id === a.pedidoId); return !adelS || (a.pedidoId || "").toLowerCase().includes(adelS) || (pf?.cliente || "").toLowerCase().includes(adelS); });
+
+    const VIA_LABELS = { transferencia: "🏦 Transferencia", adolfo: "👤 Pagó a Adolfo (Bodega TJ)", efectivo: "💵 Efectivo" };
+    const VIA_COLORS = { transferencia: "#2563EB", adolfo: "#7C3AED", efectivo: "#059669" };
 
     return (
       <div>
-        {/* Summary */}
+        {/* Header */}
+        <div style={{ background: "#FEF3C7", borderRadius: 10, padding: "12px 16px", marginBottom: 14, border: "1px solid #FDE68A" }}>
+          <div style={{ fontSize: 11, color: "#92400E", lineHeight: 1.5 }}>
+            💡 <strong>¿Qué es un adelanto?</strong> Cuando mandas dinero de Administración para comprar la mercancía de un cliente antes de que te pague. El adelanto queda pendiente hasta que el cliente pague — ya sea por transferencia o entregándole el dinero a Adolfo en Bodega TJ.
+          </div>
+        </div>
+
+        {/* Stats */}
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 140px", background: "#FEF3C7", borderRadius: 10, padding: "14px 18px", border: "2px solid #FDE68A" }}>
-            <div style={{ fontSize: 9, fontWeight: 600, color: "#92400E", textTransform: "uppercase" }}>⏳ Por recuperar</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#D97706" }}>{fmt(totalAdelantado)}</div>
-            <div style={{ fontSize: 9, color: "#9CA3AF" }}>{adelantosPend.length} adelantos</div>
+          <div style={{ flex: "1 1 140px", background: "#FEF2F2", borderRadius: 10, padding: "14px 18px", border: "2px solid #FECACA" }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B", textTransform: "uppercase" }}>⏳ Pendientes de cobrar</div>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPend)}</div>
+            <div style={{ fontSize: 9, color: "#9CA3AF" }}>{adelantosPend.length} adelanto{adelantosPend.length !== 1 ? "s" : ""}</div>
           </div>
           <div style={{ flex: "1 1 140px", background: "#ECFDF5", borderRadius: 10, padding: "14px 18px", border: "1px solid #A7F3D0" }}>
-            <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>✅ Recuperado</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalRecuperado)}</div>
-            <div style={{ fontSize: 9, color: "#9CA3AF" }}>{adelantosRec.length} adelantos</div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46", textTransform: "uppercase" }}>✅ Recuperados</div>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalRec)}</div>
+            <div style={{ fontSize: 9, color: "#9CA3AF" }}>{adelantosRec.length} adelanto{adelantosRec.length !== 1 ? "s" : ""}</div>
           </div>
-          <div style={{ flex: "1 1 140px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Btn onClick={() => { setAdelForm({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" }); setShowAdelanto(true); }} style={{ background: "#D97706" }}>💸 Nuevo adelanto</Btn>
           </div>
         </div>
 
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 12 }}>
+          <button onClick={() => setAdelTab("pendientes")} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "none", background: adelTab === "pendientes" ? "#fff" : "transparent", boxShadow: adelTab === "pendientes" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: adelTab === "pendientes" ? 700 : 500, fontFamily: "inherit", color: adelTab === "pendientes" ? "#DC2626" : "#6B7280" }}>
+            ⏳ Pendientes{adelantosPend.length > 0 && <span style={{ marginLeft: 5, background: "#DC2626", color: "#fff", borderRadius: 8, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{adelantosPend.length}</span>}
+          </button>
+          <button onClick={() => setAdelTab("pagados")} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "none", background: adelTab === "pagados" ? "#fff" : "transparent", boxShadow: adelTab === "pagados" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: adelTab === "pagados" ? 700 : 500, fontFamily: "inherit", color: adelTab === "pagados" ? "#059669" : "#6B7280" }}>
+            ✅ Pagados ({adelantosRec.length})
+          </button>
+        </div>
+
         {/* Search */}
-        <div style={{ position: "relative", marginBottom: 10 }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={adelSearch} onChange={e => setAdelSearch(e.target.value)} placeholder="Buscar folio, cliente..." autoFocus={!!adelSearch} autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
+        <div style={{ position: "relative", marginBottom: 10 }}>
+          <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+          <input value={adelSearch} onChange={e => setAdelSearch(e.target.value)} placeholder="Buscar folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+        </div>
 
-        {/* Pendientes */}
-        {filtPend.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>⏳ Por recuperar ({filtPend.length})</div>
-            {filtPend.map(a => {
-              const pf = data.fantasmas.find(x => x.id === a.pedidoId);
-              return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#FEF2F2", borderRadius: 6, border: "1px solid #FECACA", marginBottom: 4, fontSize: 11 }}>
-                  <span style={{ color: "#9CA3AF", fontSize: 9, minWidth: 50 }}>{fmtD(a.fecha)}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 700 }}>{a.pedidoId}</span>
-                  <strong>{pf?.cliente || "—"}</strong>
-                  <span style={{ flex: 1, color: "#6B7280" }}>{pf?.descripcion || a.nota || ""}</span>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{fmt(a.monto)}</span>
-                  <Btn sz="sm" v="success" onClick={() => { setRecForm({ monto: String(a.monto), montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "efectivo" }); setShowRecuperar(a.id); }}>💰 Recuperar</Btn>
-                  <button onClick={async () => { if (!await showConfirm(`¿Eliminar adelanto de ${fmt(a.monto)}?\n\nSe eliminará también el movimiento de egreso.`)) return; const movRef = a.movRef; persist({ ...data, adelantosAdmin: adelantos.filter(x => x.id !== a.id), gastosAdmin: (data.gastosAdmin || []).filter(m => m.id !== movRef && m.adelantoRef !== a.id) }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
-                </div>
-              );
-            })}
-          </div>
+        {/* Pendientes tab */}
+        {adelTab === "pendientes" && (
+          filtPend.length === 0
+            ? <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>✅</div><p style={{ fontSize: 12 }}>No hay adelantos pendientes.</p></div>
+            : filtPend.map(a => {
+                const pf = data.fantasmas.find(x => x.id === a.pedidoId);
+                return (
+                  <div key={a.id} style={{ background: "#fff", borderRadius: 8, border: "1px solid #FECACA", borderLeft: "4px solid #DC2626", padding: "12px 14px", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
+                          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#9CA3AF", fontWeight: 700 }}>{a.pedidoId}</span>
+                          <strong style={{ fontSize: 13 }}>{pf?.cliente || "—"}</strong>
+                          <span style={{ fontSize: 10, color: "#6B7280" }}>{pf?.descripcion || a.nota || ""}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#9CA3AF" }}>Adelantado el {fmtD(a.fecha)}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(a.monto)}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
+                      <button onClick={async () => { if (!await showConfirm(`¿Eliminar adelanto de ${fmt(a.monto)}?`)) return; persist({ ...data, adelantosAdmin: adelantos.filter(x => x.id !== a.id), gastosAdmin: (data.gastosAdmin || []).filter(m => m.id !== a.movRef && m.adelantoRef !== a.id) }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 4 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
+                      <Btn sz="sm" onClick={() => { setRecForm({ monto: String(a.monto), montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "transferencia" }); setShowRecuperar(a.id); }} style={{ background: "#059669" }}>💰 Marcar como cobrado</Btn>
+                    </div>
+                  </div>
+                );
+              })
         )}
 
-        {/* Recuperados */}
-        {filtRec.length > 0 && (
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginBottom: 6 }}>✅ Recuperados ({filtRec.length})</div>
-            {filtRec.map(a => {
-              const pf = data.fantasmas.find(x => x.id === a.pedidoId);
-              return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#ECFDF5", borderRadius: 6, border: "1px solid #A7F3D0", marginBottom: 3, fontSize: 10 }}>
-                  <span style={{ color: "#9CA3AF", minWidth: 50 }}>{fmtD(a.fecha)}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 9 }}>{a.pedidoId}</span>
-                  <strong>{pf?.cliente || "—"}</strong>
-                  <span style={{ flex: 1, color: "#6B7280" }}>{pf?.descripcion || ""}</span>
-                  <span style={{ fontFamily: "monospace", color: "#059669" }}>{fmt(a.monto)}</span>
-                  <span style={{ color: "#9CA3AF" }}>✓ {a.viaRecuperacion} · {fmtD(a.fechaRecuperacion)}</span>
-                </div>
-              );
-            })}
-          </div>
+        {/* Pagados tab */}
+        {adelTab === "pagados" && (
+          filtRec.length === 0
+            ? <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📭</div><p style={{ fontSize: 12 }}>No hay adelantos pagados aún.</p></div>
+            : filtRec.map(a => {
+                const pf = data.fantasmas.find(x => x.id === a.pedidoId);
+                const viaLabel = VIA_LABELS[a.viaRecuperacion] || a.viaRecuperacion || "—";
+                const viaColor = VIA_COLORS[a.viaRecuperacion] || "#6B7280";
+                return (
+                  <div key={a.id} style={{ background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB", borderLeft: "4px solid #059669", padding: "12px 14px", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
+                          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#9CA3AF", fontWeight: 700 }}>{a.pedidoId}</span>
+                          <strong style={{ fontSize: 12 }}>{pf?.cliente || "—"}</strong>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 10, background: "#ECFDF5", color: viaColor, padding: "1px 6px", borderRadius: 4, fontWeight: 600, border: `1px solid ${viaColor}22` }}>{viaLabel}</span>
+                          <span style={{ fontSize: 10, color: "#9CA3AF" }}>Cobrado el {fmtD(a.fechaRecuperacion)}</span>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(a.montoRecuperado || a.monto)}</div>
+                        {a.detalleRecuperacion && <div style={{ fontSize: 9, color: "#9CA3AF" }}>{a.detalleRecuperacion}</div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
         )}
-        {filtPend.length === 0 && filtRec.length === 0 && <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 11, padding: 30 }}>No hay adelantos{adelSearch ? ` con "${adelSearch}"` : ""}.</div>}
 
         {/* Modal nuevo adelanto */}
         {showAdelanto && (
           <Modal title="💸 Nuevo adelanto" onClose={() => { setShowAdelanto(false) }} w={480}>
-            <Fld label="Pedido">
-              <div style={{ position: "relative", marginBottom: 4 }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={adelForm.pedSearch} onChange={e => setAdelForm({ ...adelForm, pedSearch: e.target.value })} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
-            </Fld>
-            <div style={{ maxHeight: 140, overflow: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8 }}>
-              {(() => { let peds = data.fantasmas.filter(f => f.estado !== "CERRADO"); if (adelForm.pedSearch) { const s = adelForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); } return peds.slice(0, 15).map(f => { const sel = adelForm.pedidoId === f.id; return (<div key={f.id} onClick={() => setAdelForm({ ...adelForm, pedidoId: f.id, monto: String(f.costoMercancia), pedSearch: "" })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#FEF3C7" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #D97706" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "#fff"; }}><div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, color: "#9CA3AF" }}>{f.id}</span><strong style={{ fontSize: 11 }}>{f.cliente}</strong>{sel && <span style={{ fontSize: 8, background: "#D97706", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}<span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: "#DC2626" }}>{fmt(f.costoMercancia)}</span></div><div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div></div>); })(); })()}
+            <div style={{ fontSize: 11, color: "#92400E", background: "#FEF3C7", padding: "8px 12px", borderRadius: 6, marginBottom: 12, border: "1px solid #FDE68A" }}>
+              Registra aquí cuando mandas dinero de Admin para comprar mercancía de un cliente antes de que pague.
             </div>
-            <div style={{ display: "flex", gap: 8 }}><Fld label="Monto *"><Inp type="number" value={adelForm.monto} onChange={e => setAdelForm({ ...adelForm, monto: e.target.value })} placeholder="0.00" /></Fld><Fld label="Fecha"><Inp type="date" value={adelForm.fecha} onChange={e => setAdelForm({ ...adelForm, fecha: e.target.value })} /></Fld></div>
-            {parseFloat(adelForm.monto) > saldoAdmin && <div style={{ background: "#FEE2E2", borderRadius: 6, padding: "6px 10px", border: "1px solid #FECACA", marginBottom: 6, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>⚠️ Saldo insuficiente ({fmt(saldoAdmin)})</div>}
-            <Fld label="Nota"><Inp value={adelForm.nota} onChange={e => setAdelForm({ ...adelForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => { setShowAdelanto(false) }}>Cancelar</Btn><Btn disabled={!adelForm.pedidoId || !adelForm.monto || parseFloat(adelForm.monto) > saldoAdmin} onClick={() => { const monto = parseFloat(adelForm.monto) || 0; const refId = Date.now(); const a = { id: refId, pedidoId: adelForm.pedidoId, monto, fecha: adelForm.fecha, nota: adelForm.nota, recuperado: false, movRef: refId + 1 }; const egr = { id: refId + 1, concepto: `ADELANTO ${adelForm.pedidoId}`, monto, montoUSD: monto, montoMXN: null, moneda: "USD", tipoCambio: null, destino: "ADMIN", fecha: adelForm.fecha, nota: adelForm.nota, tipoMov: "egreso", adelantoRef: refId }; let nd = { ...data, adelantosAdmin: [...adelantos, a], gastosAdmin: [...(data.gastosAdmin || []), egr] }; nd.fantasmas = nd.fantasmas.map(f => f.id !== adelForm.pedidoId ? f : { ...f, adelantoAdmin: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: adelForm.fecha, accion: `💸 Admin adelantó ${fmt(monto)}`, quien: role }] }); persist(nd); setShowAdelanto(false); }} style={{ background: "#D97706" }}>💸 Registrar</Btn></div>
+            <Fld label="Pedido *">
+              <div style={{ position: "relative", marginBottom: 4 }}>
+                <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+                <input value={adelForm.pedSearch} onChange={e => setAdelForm({ ...adelForm, pedSearch: e.target.value })} placeholder="Buscar folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+              </div>
+              <div style={{ maxHeight: 140, overflow: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                {(() => {
+                  let peds = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.clientePago);
+                  if (adelForm.pedSearch) { const s = adelForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); }
+                  if (peds.length === 0) return <div style={{ padding: 12, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos sin pagar</div>;
+                  return peds.slice(0, 12).map(f => {
+                    const sel = adelForm.pedidoId === f.id;
+                    return <div key={f.id} onClick={() => setAdelForm({ ...adelForm, pedidoId: f.id, monto: String(f.costoMercancia), pedSearch: "" })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#ECFDF5" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #059669" : "3px solid transparent" }}>
+                      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                        <span style={{ fontSize: 9, fontFamily: "monospace", color: "#9CA3AF", fontWeight: 700 }}>{f.id}</span>
+                        <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
+                        {sel && <span style={{ fontSize: 8, background: "#059669", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
+                        <span style={{ marginLeft: "auto", fontWeight: 600, fontSize: 10, color: "#DC2626" }}>{fmt(f.costoMercancia)}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div>
+                    </div>;
+                  });
+                })()}
+              </div>
+            </Fld>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Fld label="Monto USD *"><Inp type="number" value={adelForm.monto} onChange={e => setAdelForm({ ...adelForm, monto: e.target.value })} placeholder="0.00" /></Fld>
+              <Fld label="Fecha"><Inp type="date" value={adelForm.fecha} onChange={e => setAdelForm({ ...adelForm, fecha: e.target.value })} /></Fld>
+            </div>
+            {parseFloat(adelForm.monto) > saldoAdmin && <div style={{ background: "#FEE2E2", borderRadius: 6, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>⚠️ Saldo insuficiente — tienes {fmt(saldoAdmin)} USD</div>}
+            <Fld label="Nota (opcional)"><Inp value={adelForm.nota} onChange={e => setAdelForm({ ...adelForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
+              <Btn v="secondary" onClick={() => { setShowAdelanto(false) }}>Cancelar</Btn>
+              <Btn disabled={!adelForm.pedidoId || !(parseFloat(adelForm.monto) > 0)} onClick={() => {
+                const monto = parseFloat(adelForm.monto) || 0;
+                const refId = Date.now();
+                const a = { id: refId, pedidoId: adelForm.pedidoId, monto, fecha: adelForm.fecha, nota: adelForm.nota, recuperado: false, movRef: refId + 1 };
+                const egr = { id: refId + 1, concepto: `ADELANTO ${adelForm.pedidoId}`, monto, montoUSD: monto, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: adelForm.fecha, nota: adelForm.nota, tipoMov: "egreso", adelantoRef: refId };
+                let nd = { ...data, adelantosAdmin: [...adelantos, a], gastosAdmin: [...(data.gastosAdmin || []), egr] };
+                nd.fantasmas = nd.fantasmas.map(f => f.id !== adelForm.pedidoId ? f : { ...f, adelantoAdmin: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: adelForm.fecha, accion: `💸 Admin adelantó ${fmt(monto)}`, quien: role }] });
+                persist(nd);
+                setShowAdelanto(false);
+              }} style={{ background: "#D97706" }}>💸 Registrar adelanto</Btn>
+            </div>
           </Modal>
         )}
 
-        {/* Modal recuperar */}
-        {showRecuperar && (() => { const adel = adelantos.find(a => a.id === showRecuperar); if (!adel) return null; const pf = data.fantasmas.find(x => x.id === adel.pedidoId); return (
-          <Modal title="💰 Recuperar adelanto" onClose={() => setShowRecuperar(null)} w={440}>
-            <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 10, border: "1px solid #E5E7EB", fontSize: 11 }}><strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"} · Adelantado: <strong style={{ color: "#D97706" }}>{fmt(adel.monto)}</strong></div>
-            <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>{["efectivo", "transferencia", "adolfo"].map(v => (<button key={v} onClick={() => setRecForm({ ...recForm, via: v })} style={{ flex: 1, padding: "7px 10px", borderRadius: 6, border: recForm.via === v ? "2px solid #059669" : "1px solid #D1D5DB", background: recForm.via === v ? "#ECFDF5" : "#fff", color: recForm.via === v ? "#065F46" : "#6B7280", fontWeight: recForm.via === v ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{v === "efectivo" ? "💵 Efectivo" : v === "transferencia" ? "🏦 Transferencia" : "👤 Adolfo"}</button>))}</div>
-            <div style={{ display: "flex", gap: 8 }}><Fld label="🇺🇸 USD"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld><Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld></div>
-            <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}><div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>🇲🇽 ¿También en pesos?</div><div style={{ display: "flex", gap: 8 }}><Fld label="MXN"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld><Fld label="T.C."><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld></div>{recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn><Btn onClick={() => { const usd = parseFloat(recForm.monto) || 0; const mxn = parseFloat(recForm.montoMXN) || 0; const tc = parseFloat(recForm.tipoCambio) || 0; const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0; const total = usd + mxnUsd; const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + "); const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: recForm.via, montoRecuperado: total, detalleRecuperacion: detalle }); const ing = { id: Date.now(), concepto: `RECUPERACIÓN ADELANTO ${adel.pedidoId} (${recForm.via})`, monto: total, montoUSD: usd, montoMXN: mxn || null, moneda: mxn > 0 ? "MIXTO" : "USD", tipoCambio: tc || null, montoOriginal: mxn || null, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", detalle }; let nd = { ...data, adelantosAdmin: newAdel, gastosAdmin: [...(data.gastosAdmin || []), ing] }; nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: recForm.fecha, accion: `💰 Adelanto recuperado: ${detalle} vía ${recForm.via}`, quien: role }] }); persist(nd); setShowRecuperar(null); }} style={{ background: "#059669" }}>💰 Confirmar</Btn></div>
-          </Modal>
-        ); })()}
+        {/* Modal cobrar adelanto */}
+        {showRecuperar && (() => {
+          const adel = adelantos.find(a => a.id === showRecuperar);
+          if (!adel) return null;
+          const pf = data.fantasmas.find(x => x.id === adel.pedidoId);
+          return (
+            <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={440}>
+              <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
+                <strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"} · <span style={{ color: "#D97706", fontWeight: 700 }}>Adelantado: {fmt(adel.monto)}</span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿Cómo te lo pagó el cliente?</div>
+              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                {[["transferencia", "🏦 Transferencia"], ["adolfo", "👤 Le pagó a Adolfo"], ["efectivo", "💵 Efectivo"]].map(([v, l]) => (
+                  <button key={v} onClick={() => setRecForm({ ...recForm, via: v })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: recForm.via === v ? `2px solid ${VIA_COLORS[v]}` : "1px solid #E5E7EB", background: recForm.via === v ? "#F0FDF4" : "#fff", color: recForm.via === v ? VIA_COLORS[v] : "#6B7280", fontWeight: recForm.via === v ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>{l}</button>
+                ))}
+              </div>
+              {recForm.via === "adolfo" && <div style={{ background: "#F5F3FF", borderRadius: 6, padding: "8px 12px", border: "1px solid #E9D5FF", marginBottom: 10, fontSize: 11, color: "#6D28D9" }}>👤 El cliente le pagó a Adolfo en Bodega TJ, y Adolfo te lo entregó a ti.</div>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <Fld label="🇺🇸 USD recibido"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
+                <Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld>
+              </div>
+              <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>🇲🇽 ¿También pagó en pesos? (opcional)</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Fld label="MXN"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
+                  <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+                </div>
+                {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}
+              </div>
+              <Fld label="Nota (opcional)"><Inp value={recForm.nota} onChange={e => setRecForm({ ...recForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
+                <Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn>
+                <Btn disabled={!(parseFloat(recForm.monto) > 0 || parseFloat(recForm.montoMXN) > 0)} onClick={() => {
+                  const usd = parseFloat(recForm.monto) || 0;
+                  const mxn = parseFloat(recForm.montoMXN) || 0;
+                  const tc = parseFloat(recForm.tipoCambio) || 0;
+                  const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
+                  const total = usd + mxnUsd;
+                  const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + ");
+                  const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: recForm.via, montoRecuperado: total, detalleRecuperacion: detalle, nota: recForm.nota });
+                  const ing = { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} vía ${recForm.via}`, monto: total, montoUSD: usd, montoMXN: mxn || 0, moneda: mxn > 0 ? "MIXTO" : "USD", tipoCambio: tc || null, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id };
+                  let nd = { ...data, adelantosAdmin: newAdel, gastosAdmin: [...(data.gastosAdmin || []), ing] };
+                  nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: recForm.fecha, accion: `💰 Adelanto cobrado (${detalle}) vía ${VIA_LABELS[recForm.via] || recForm.via}`, quien: role }] });
+                  persist(nd);
+                  setShowRecuperar(null);
+                  setAdelTab("pagados");
+                }} style={{ background: "#059669" }}>✅ Confirmar cobro</Btn>
+              </div>
+            </Modal>
+          );
+        })()}
       </div>
     );
   };
@@ -6368,7 +6545,7 @@ export default function App() {
           <span style={{ display: "block", width: 18, height: 2, background: "#fff", borderRadius: 2 }} />
         </button>
         {/* Logo */}
-        <button onClick={() => { setView("home"); setMenuOpen(false); }} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit", fontSize: 14, fontWeight: 700, padding: 0, flexShrink: 0 }}>
+        <button onClick={() => { navigate("home"); setMenuOpen(false); }} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit", fontSize: 14, fontWeight: 700, padding: 0, flexShrink: 0 }}>
           <span style={{ fontSize: 18 }}>👻</span> OchoaTransport
         </button>
         {/* Current view label - shows active section */}
@@ -6413,7 +6590,7 @@ export default function App() {
             </div>
             {/* Nav items */}
             {navItems.map(n => (
-              <button key={n.k} onClick={() => { setPrevView(view); setView(n.k); setSelId(null); setFEst("ALL"); setSearch(""); setMenuOpen(false); }}
+              <button key={n.k} onClick={() => { navigate(n.k, null, view); setFEst("ALL"); setSearch(""); setMenuOpen(false); }}
                 style={{ width: "100%", background: view === n.k ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === n.k ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: view === n.k ? 700 : 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === n.k ? "3px solid #60A5FA" : "3px solid transparent" }}>
                 {n.i} {n.l}
               </button>
@@ -6422,10 +6599,10 @@ export default function App() {
             {role === "admin" && (
               <>
                 <div style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "4px 0" }} />
-                <button onClick={() => { setView("main"); setSelId(null); setMenuOpen(false); }} style={{ width: "100%", background: view === "main" ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === "main" ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === "main" ? "3px solid #60A5FA" : "3px solid transparent" }}>
+                <button onClick={() => { navigate("main", null); setMenuOpen(false); }} style={{ width: "100%", background: view === "main" ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === "main" ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === "main" ? "3px solid #60A5FA" : "3px solid transparent" }}>
                   📊 Dashboard
                 </button>
-                <button onClick={() => { setView("finanzas"); setSelId(null); setMenuOpen(false); }} style={{ width: "100%", background: view === "finanzas" ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === "finanzas" ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === "finanzas" ? "3px solid #60A5FA" : "3px solid transparent" }}>
+                <button onClick={() => { navigate("finanzas", null); setMenuOpen(false); }} style={{ width: "100%", background: view === "finanzas" ? "rgba(255,255,255,.1)" : "transparent", border: "none", color: view === "finanzas" ? "#fff" : "#94A3B8", padding: "13px 18px", cursor: "pointer", fontSize: 14, fontWeight: 400, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12, textAlign: "left", borderLeft: view === "finanzas" ? "3px solid #60A5FA" : "3px solid transparent" }}>
                   💰 Finanzas
                 </button>
               </>
@@ -6456,12 +6633,12 @@ export default function App() {
             <button onClick={() => setPeriodoOffset(0)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 9, color: "#6B7280", fontFamily: "inherit", textDecoration: "underline" }}>Hoy</button>
           </div>
         )}
-        {role === "admin" && <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}><button onClick={() => { setView(prevView); setSelId(null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "main" ? "2px solid #1A2744" : "1px solid #D1D5DB", background: view === "main" ? "#EFF6FF" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "main" ? 700 : 500, fontFamily: "inherit", color: view === "main" ? "#1A2744" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>📊 Dashboard</button><button onClick={() => { setView("finanzas"); setSelId(null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "finanzas" ? "2px solid #059669" : "1px solid #D1D5DB", background: view === "finanzas" ? "#ECFDF5" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "finanzas" ? 700 : 500, fontFamily: "inherit", color: view === "finanzas" ? "#065F46" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>💰 Finanzas</button></div>}
+        {role === "admin" && <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}><button onClick={() => { navigate(prevView, null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "main" ? "2px solid #1A2744" : "1px solid #D1D5DB", background: view === "main" ? "#EFF6FF" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "main" ? 700 : 500, fontFamily: "inherit", color: view === "main" ? "#1A2744" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>📊 Dashboard</button><button onClick={() => { navigate("finanzas"); setSelId(null); }} style={{ padding: "5px 14px", borderRadius: 8, border: view === "finanzas" ? "2px solid #059669" : "1px solid #D1D5DB", background: view === "finanzas" ? "#ECFDF5" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: view === "finanzas" ? 700 : 500, fontFamily: "inherit", color: view === "finanzas" ? "#065F46" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>💰 Finanzas</button></div>}
       </div>
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "18px 24px" }}>
         {/* Botón atrás — aparece en todas las pantallas excepto home */}
         {view !== "main" && view !== "detail" && view !== "home" && (
-          <button onClick={() => { setView("home"); setSelId(null) }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
+          <button onClick={() => { navigate("home"); setSelId(null) }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
             ← Inicio
           </button>
         )}
