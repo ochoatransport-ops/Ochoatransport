@@ -4531,51 +4531,77 @@ export default function App() {
 
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
+      const [filtro, setFiltro] = useState("todos"); // todos | pendientes | pagados
+      const [sk, setSk] = useState("id");
+      const [sd, setSd] = useState(1);
       const isMerc = pagoTab === "mercancia";
 
-      const all = data.fantasmas.filter(f => f.estado !== "CERRADO");
-      let lista = all;
+      let lista = data.fantasmas.filter(f => f.estado !== "CERRADO");
+      if (filtro === "pendientes") lista = lista.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)));
+      if (filtro === "pagados") lista = lista.filter(f => isMerc ? f.clientePago : f.fletePagado);
       if (busqueda) {
         const s = busqueda.toLowerCase();
         lista = lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion || "").toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
       }
+      lista = [...lista].sort((a, b) => {
+        const va = a[sk] || ""; const vb = b[sk] || "";
+        return typeof va === "number" ? (va - vb) * sd : String(va).localeCompare(String(vb)) * sd;
+      });
+      const toggle = (k) => { if (sk === k) setSd(d => -d); else { setSk(k); setSd(1); } };
+      const arr = (k) => sk === k ? (sd === 1 ? " ↑" : " ↓") : "";
 
-      const totalPend = isMerc
-        ? lista.filter(f => !f.clientePago).reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0)
-        : lista.filter(f => !f.fletePagado && f.costoFlete > 0).reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
-      const totalPag = isMerc
-        ? lista.filter(f => f.clientePago).reduce((s, f) => s + (f.totalVenta || f.costoMercancia), 0)
-        : lista.filter(f => f.fletePagado).reduce((s, f) => s + (f.costoFlete || 0), 0);
+      const pendCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)))).length;
+      const pagCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).length;
+      const totalMerc = data.fantasmas.filter(f => f.estado !== "CERRADO").reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
+      const totalPag = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
+      const totalPend = totalMerc - totalPag;
 
       const th = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#1A2744", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap", cursor: "pointer" };
 
       return (
         <div>
+          {/* Stats */}
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 120px", background: "#FEF2F2", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B" }}>{isMerc ? "👻" : "🚛"} PENDIENTE</div>
-              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPend)}</div>
+            <div style={{ flex: "1 1 100px", background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280" }}>TOTAL {isMerc ? "MERCANCÍA" : "FLETE"}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{fmt(totalMerc)}</div>
             </div>
-            <div style={{ flex: "1 1 120px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>{isMerc ? "👻" : "🚛"} COBRADO</div>
-              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div>
+            <div style={{ flex: "1 1 100px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>RECIBIDO</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div>
+              <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pagCount} pedidos</div>
+            </div>
+            <div style={{ flex: "1 1 100px", background: "#FEF2F2", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B" }}>PENDIENTE</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPend)}</div>
+              <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pendCount} pedidos</div>
             </div>
           </div>
-          <div style={{ position: "relative", marginBottom: 10 }}>
-            <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+          {/* Search + filter */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "1 1 200px" }}>
+              <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+            </div>
+            <div style={{ display: "flex", gap: 2, background: "#F3F4F6", borderRadius: 6, padding: 2 }}>
+              {[["todos","Todos"],["pendientes",`${isMerc?"👻":"🚛"} Pendientes (${pendCount})`],["pagados",`✅ Pagados (${pagCount})`]].map(([k,l]) => (
+                <button key={k} onClick={() => setFiltro(k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", background: filtro === k ? "#fff" : "transparent", boxShadow: filtro === k ? "0 1px 2px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 10, fontWeight: filtro === k ? 700 : 500, fontFamily: "inherit", color: filtro === k ? "#374151" : "#9CA3AF", whiteSpace: "nowrap" }}>{l}</button>
+              ))}
+            </div>
           </div>
+          {/* Table */}
+          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 6 }}>{lista.length} pedido{lista.length !== 1 ? "s" : ""}</div>
           <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "60vh" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
               <thead><tr>
-                <th style={th}>Folio</th>
-                <th style={th}>Proveedor</th>
-                <th style={th}>Cliente</th>
+                <th onClick={() => toggle("id")} style={th}>Folio{arr("id")}</th>
+                <th onClick={() => toggle("proveedor")} style={th}>Proveedor{arr("proveedor")}</th>
+                <th onClick={() => toggle("cliente")} style={th}>Cliente{arr("cliente")}</th>
                 <th style={th}>Mercancía</th>
                 <th style={th}>Empaque</th>
                 <th style={th}>Estado</th>
-                <th style={th}>{isMerc ? "👻 Costo" : "🚛 Flete"}</th>
-                <th style={th}>{isMerc ? "👻 Pagó" : "🚛 Pagó"}</th>
+                <th onClick={() => toggle(isMerc ? "costoMercancia" : "costoFlete")} style={{...th, color: isMerc ? "#FCA5A5" : "#93C5FD"}}>{isMerc ? "👻 Costo" : "🚛 Flete"}{arr(isMerc ? "costoMercancia" : "costoFlete")}</th>
+                <th style={th}>Pagó</th>
               </tr></thead>
               <tbody>{lista.map((f, i) => {
                 const td = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6" };
@@ -4585,23 +4611,19 @@ export default function App() {
                 const pagado = isMerc ? f.clientePago : f.fletePagado;
                 const desconocido = isMerc ? f.costoDesconocido : f.fleteDesconocido;
                 return (
-                  <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onClick={go} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
+                  <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onClick={go} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
                     <td style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600 }}>{f.id}</td>
                     <td style={{ ...td, color: "#D97706", fontWeight: 600 }}>{f.proveedor || "—"}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{f.cliente}</td>
                     <td style={{ ...td, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion || "—"}</td>
-                    <td style={{ ...td, color: "#6B7280", whiteSpace: "nowrap" }}>{f.empaque ? `${f.cantBultos || 1} ${f.empaque}` : "—"}</td>
+                    <td style={{ ...td, color: "#6B7280", whiteSpace: "nowrap" }}>{f.empaque ? `${f.cantBultos||1} ${f.empaque}` : "—"}</td>
                     <td style={{ ...td, padding: "6px 4px" }}><Badge estado={f.estado} /></td>
                     <td style={{ ...td, fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB" }}>{desconocido ? "❓" : monto ? fmt(monto) : "—"}</td>
                     <td style={{ ...td, textAlign: "center" }}>
-                      {pagado
-                        ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
-                        : abono > 0
-                          ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(abono)}</span>
-                          : desconocido
-                            ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
-                            : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>
-                      }
+                      {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
+                        : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(abono)}</span>
+                        : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
+                        : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
                     </td>
                   </tr>
                 );
