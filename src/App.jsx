@@ -425,6 +425,45 @@ export default function App() {
 
 
   const prevDataRef = useRef(null);
+  const formOpenRef = useRef(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+
+  // ── Presence system ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!role || !currentUser) return;
+    const presenceRef = doc(db, "presence", currentUser);
+    const ROLE_LABELS = { admin: "Admin", bodegatj: "Bodega TJ", usa: "Bodega USA", vendedor: "Vendedor" };
+
+    // Register presence
+    const updatePresence = () => setDoc(presenceRef, {
+      user: currentUser, role, label: ROLE_LABELS[role] || role,
+      lastSeen: Date.now(), online: true
+    });
+    updatePresence();
+
+    // Heartbeat every 30s
+    const heartbeat = setInterval(updatePresence, 30000);
+
+    // Remove on tab close
+    const handleUnload = () => setDoc(presenceRef, { user: currentUser, role, online: false, lastSeen: Date.now() });
+    window.addEventListener("beforeunload", handleUnload);
+
+    // Listen to all online users
+    const unsubPresence = onSnapshot(collection(db, "presence"), (snap) => {
+      const now = Date.now();
+      const active = snap.docs
+        .map(d => d.data())
+        .filter(u => u.online && u.user !== currentUser && (now - (u.lastSeen || 0)) < 90000);
+      setOnlineUsers(active);
+    });
+
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener("beforeunload", handleUnload);
+      unsubPresence();
+      setDoc(presenceRef, { user: currentUser, role, online: false, lastSeen: Date.now() });
+    };
+  }, [role, currentUser]);
 
   useEffect(() => {
     // Safety timeout — if Firebase takes too long, show empty app
@@ -461,6 +500,7 @@ export default function App() {
 
     // Real-time listener — syncs fantasmas changes from other users instantly
     const unsubFantasmas = onSnapshot(collection(db, "fantasmas"), (snap) => {
+      if (formOpenRef.current) return;
       const remoteFantasmas = snap.docs.map(d => d.data());
       setData(prev => {
         if (!prev) return prev;
@@ -470,9 +510,8 @@ export default function App() {
       });
     }, (err) => console.error("Realtime listener error:", err));
 
-    // Real-time listeners for config documents
     const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists() || formOpenRef.current) return;
       const meta = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -490,7 +529,7 @@ export default function App() {
     });
 
     const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists() || formOpenRef.current) return;
       const fin = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -507,7 +546,7 @@ export default function App() {
     });
 
     const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists() || formOpenRef.current) return;
       setData(prev => {
         if (!prev) return prev;
         const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
@@ -517,7 +556,7 @@ export default function App() {
     });
 
     const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists() || formOpenRef.current) return;
       const c = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -614,7 +653,7 @@ export default function App() {
     const newClientes = form.cliente && !clientes.includes(form.cliente) ? [...clientes, form.cliente] : clientes;
     const newProveedores = form.proveedor && !proveedoresList.includes(form.proveedor) ? [...proveedoresList, form.proveedor] : proveedoresList;
     persist({ ...data, fantasmas: [nf, ...data.fantasmas], nextId: data.nextId + 1, vendedores: newVendedores, clientes: newClientes, proveedoresList: newProveedores, provUbicaciones });
-    setShowNew(false);
+    setShowNew(false)
   };
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
@@ -835,7 +874,7 @@ export default function App() {
     const pct = c.montoOriginal > 0 ? Math.round((c.saldoActual / c.montoOriginal) * 100) : 0;
     const pc = pct >= 70 ? "#059669" : pct >= 30 ? "#D97706" : "#DC2626";
     return (
-      <Modal title="🛡️ Colchón USA" onClose={() => setShowColchon(false)} w={440}>
+      <Modal title="🛡️ Colchón USA" onClose={() => { setShowColchon(false) }} w={440}>
         {c.montoOriginal === 0 ? (
           <div><p style={{ fontSize: 12, color: "#6B7280", marginTop: 0 }}>Define el monto inicial (3-5 pedidos promedio).</p><Fld label="Monto (USD)"><Inp type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="1500" /></Fld><Btn disabled={!amt} onClick={() => { const m = parseFloat(amt) || 0; updColchon({ montoOriginal: m, saldoActual: m }); }} style={{ width: "100%" }}>Establecer</Btn></div>
         ) : (
@@ -879,7 +918,7 @@ export default function App() {
     const noOpt = (list, label) => list.length === 0 ? <div style={{ fontSize: 10, color: "#D97706", marginTop: 2 }}>⚠️ Registra {label} primero</div> : null;
 
     return (
-      <Modal title="Nuevo Pedido" onClose={() => setShowNew(false)} w={560}>
+      <Modal title="Nuevo Pedido" onClose={() => { setShowNew(false) }} w={560}>
         {/* Tabs: Normal / Especial */}
         <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 16 }}>
           <button onClick={() => sF({ ...f, pedidoEspecial: false, precioVenta: "" })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: !f.pedidoEspecial ? "#fff" : "transparent", boxShadow: !f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: !f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: !f.pedidoEspecial ? "#1A2744" : "#6B7280" }}>
@@ -1105,7 +1144,7 @@ export default function App() {
           );
         })()}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-          <Btn v="secondary" onClick={() => setShowNew(false)}>Cancelar</Btn>
+          <Btn v="secondary" onClick={() => { setShowNew(false) }}>Cancelar</Btn>
           <Btn disabled={!allClientes.includes(f.cliente) || !allProveedores.includes(f.proveedor) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
             const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
             const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
@@ -1320,7 +1359,7 @@ export default function App() {
             <option value="pagado">🚛 Pagado ✓</option>
             <option value="pendiente">🚛 Pendiente ✗</option>
           </select>
-          <Btn onClick={() => setShowNew(true)}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setShowNew(true) }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{filtered.length} pedido{filtered.length !== 1 ? "s" : ""}</div>
         {filtered.length === 0 ? <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><p style={{ fontSize: 12 }}>No hay pedidos{search || fEst !== "ALL" ? " con esos filtros" : " en esta vista"}.</p></div> : (() => {
@@ -2068,20 +2107,20 @@ export default function App() {
 
         {/* NEW CLIENTE MODAL */}
         {showNewCliente && (
-          <Modal title="Nuevo Cliente" onClose={() => setShowNewCliente(false)} w={360}>
+          <Modal title="Nuevo Cliente" onClose={() => { setShowNewCliente(false) }} w={360}>
             <Fld label="Nombre del cliente"><Inp value={newName} onChange={e => setNewName(e.target.value.toUpperCase())} placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} /></Fld>
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <Btn v="secondary" onClick={() => setShowNewCliente(false)}>Cancelar</Btn>
+              <Btn v="secondary" onClick={() => { setShowNewCliente(false) }}>Cancelar</Btn>
               <Btn disabled={!newName} onClick={() => addCliente(newName)}>Crear</Btn>
             </div>
           </Modal>
         )}
         {/* NEW VENDEDOR MODAL */}
         {showNewVendedor && (
-          <Modal title="Nuevo Vendedor" onClose={() => setShowNewVendedor(false)} w={360}>
+          <Modal title="Nuevo Vendedor" onClose={() => { setShowNewVendedor(false) }} w={360}>
             <Fld label="Nombre del vendedor"><Inp value={newName} onChange={e => setNewName(e.target.value.toUpperCase())} placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} /></Fld>
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <Btn v="secondary" onClick={() => setShowNewVendedor(false)}>Cancelar</Btn>
+              <Btn v="secondary" onClick={() => { setShowNewVendedor(false) }}>Cancelar</Btn>
               <Btn disabled={!newName} onClick={() => addVendedor(newName)}>Crear</Btn>
             </div>
           </Modal>
@@ -2570,7 +2609,7 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📦 Envíos USA → TJ</h2>
-          {(role === "usa" || role === "admin") && listos.length > 0 && <Btn onClick={() => setShowNewEnvio(true)}><I.Plus /> Nuevo Envío</Btn>}
+          {(role === "usa" || role === "admin") && listos.length > 0 && <Btn onClick={() => { setShowNewEnvio(true) }}><I.Plus /> Nuevo Envío</Btn>}
         </div>
 
         {/* Pedidos listos para enviar - solo USA */}
@@ -2653,7 +2692,7 @@ export default function App() {
 
         {/* New Envío Modal */}
         {showNewEnvio && (
-          <Modal title="🚛 Nuevo Envío a Tijuana" onClose={() => setShowNewEnvio(false)} w={520}>
+          <Modal title="🚛 Nuevo Envío a Tijuana" onClose={() => { setShowNewEnvio(false) }} w={520}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
               <Fld label="Fecha de envío"><Inp type="date" value={envioForm.fecha} onChange={e => setEnvioForm({ ...envioForm, fecha: e.target.value })} /></Fld>
               <Fld label="Vehículo"><Inp value={envioForm.vehiculo} onChange={e => setEnvioForm({ ...envioForm, vehiculo: e.target.value })} placeholder="Rabón, box truck, etc." /></Fld>
@@ -2691,7 +2730,7 @@ export default function App() {
               })}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-              <Btn v="secondary" onClick={() => setShowNewEnvio(false)} style={{ flex: 1, justifyContent: "center" }}>Cancelar</Btn>
+              <Btn v="secondary" onClick={() => { setShowNewEnvio(false) }} style={{ flex: 1, justifyContent: "center" }}>Cancelar</Btn>
               <Btn disabled={Object.keys(envioForm.pedidos).filter(k => envioForm.pedidos[k]).length === 0} onClick={crearEnvio} style={{ flex: 1, justifyContent: "center" }}>Crear Envío ({Object.keys(envioForm.pedidos).filter(k => envioForm.pedidos[k]).length} pedidos)</Btn>
             </div>
           </Modal>
@@ -2817,7 +2856,7 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 Pedidos</h2>
-          <Btn onClick={() => setShowNew(true)}><I.Plus /> Nuevo Pedido</Btn>
+          <Btn onClick={() => { setShowNew(true) }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
@@ -2882,7 +2921,7 @@ export default function App() {
           const saldoAdmUSD = admUSD.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.monto || 0), 0) - admUSD.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
           const sinSaldoAdmin = totalMonto > saldoAdmUSD;
           return (
-            <Modal title="📨 Enviar sobre a USA" onClose={() => setShowSobreModal(false)} w={420}>
+            <Modal title="📨 Enviar sobre a USA" onClose={() => { setShowSobreModal(false) }} w={420}>
               <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
                 <strong>{ids.length}</strong> pedido{ids.length > 1 ? "s" : ""} · Total: <strong>{fmt(totalMonto)}</strong>
               </div>
@@ -2915,7 +2954,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}><Btn v="secondary" onClick={() => setShowSobreModal(false)}>Cancelar</Btn></div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}><Btn v="secondary" onClick={() => { setShowSobreModal(false) }}>Cancelar</Btn></div>
             </Modal>
           );
         })()}
@@ -3467,7 +3506,7 @@ export default function App() {
           )}
 
           {showGastoUSA && (
-            <Modal title={gastoUSAForm.tipoMov === "ingreso" ? "💰 Registrar ingreso" : gastoUSAForm.tipoMov === "envio" ? "📤 Enviar dinero" : gastoUSAForm.tipoMov === "cambio" ? "💱 Cambio de moneda" : "🏢 Registrar gasto"} onClose={() => setShowGastoUSA(false)} w={500}>
+            <Modal title={gastoUSAForm.tipoMov === "ingreso" ? "💰 Registrar ingreso" : gastoUSAForm.tipoMov === "envio" ? "📤 Enviar dinero" : gastoUSAForm.tipoMov === "cambio" ? "💱 Cambio de moneda" : "🏢 Registrar gasto"} onClose={() => { setShowGastoUSA(false) }} w={500}>
               {/* Cambio de moneda */}
               {gastoUSAForm.tipoMov === "cambio" && (
                 <div>
@@ -3496,7 +3535,7 @@ export default function App() {
                   <div style={{ display: "flex", gap: 8 }}><Fld label="Fecha"><Inp type="date" value={gastoUSAForm.fecha} onChange={e => setGastoUSAForm({ ...gastoUSAForm, fecha: e.target.value })} /></Fld></div>
                   <Fld label="Nota (opcional)"><Inp value={gastoUSAForm.nota} onChange={e => setGastoUSAForm({ ...gastoUSAForm, nota: e.target.value })} placeholder="Casa de cambio, lugar..." /></Fld>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-                    <Btn v="secondary" onClick={() => setShowGastoUSA(false)}>Cancelar</Btn>
+                    <Btn v="secondary" onClick={() => { setShowGastoUSA(false) }}>Cancelar</Btn>
                     <Btn disabled={!(parseFloat(gastoUSAForm.monto) > 0) || !(parseFloat(gastoUSAForm.tipoCambio) > 0)} onClick={() => {
                       const mo = parseFloat(gastoUSAForm.monto);
                       const tc = parseFloat(gastoUSAForm.tipoCambio);
@@ -3581,7 +3620,7 @@ export default function App() {
               {gastoUSAForm.tipoMov !== "ingreso" && <Fld label="Categoría"><div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>{CATEGORIAS_USA.map(c => (<button key={c} onClick={() => setGastoUSAForm({ ...gastoUSAForm, categoria: c })} style={{ padding: "4px 10px", borderRadius: 5, border: gastoUSAForm.categoria === c ? "2px solid #1A2744" : "1px solid #D1D5DB", background: gastoUSAForm.categoria === c ? "#EFF6FF" : "#fff", color: gastoUSAForm.categoria === c ? "#1A2744" : "#6B7280", fontWeight: gastoUSAForm.categoria === c ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{c}</button>))}</div></Fld>}
               <Fld label="Nota (opcional)"><Inp value={gastoUSAForm.nota} onChange={e => setGastoUSAForm({ ...gastoUSAForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-                <Btn v="secondary" onClick={() => setShowGastoUSA(false)}>Cancelar</Btn>
+                <Btn v="secondary" onClick={() => { setShowGastoUSA(false) }}>Cancelar</Btn>
                 <Btn disabled={!gastoUSAForm.concepto || !gastoUSAForm.monto || (gastoUSAForm.moneda === "MXN" && !gastoUSAForm.tipoCambio)} onClick={() => {
                   const mo = parseFloat(gastoUSAForm.monto) || 0;
                   const esMXN = gastoUSAForm.moneda === "MXN";
@@ -4205,7 +4244,7 @@ export default function App() {
                 <Fld label="Nota"><Inp value={tForm.nota} onChange={e => setTForm({ ...tForm, nota: e.target.value })} placeholder="Referencia, concepto..." /></Fld>
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-                <Btn v="secondary" onClick={() => setShowTrans(false)}>Cancelar</Btn>
+                <Btn v="secondary" onClick={() => { setShowTrans(false) }}>Cancelar</Btn>
                 <Btn disabled={!tForm.pedidoId || !tForm.cuenta || (tForm.moneda === "MXN" ? (!tForm.montoMXN || !tForm.tipoCambio) : !tForm.montoUSD)} onClick={registrarTrans} style={{ background: "#7C3AED" }}>{editId ? "✏️ Guardar cambios" : "🏦 Registrar transferencia"}</Btn>
               </div>
             </Modal>
@@ -4517,7 +4556,7 @@ export default function App() {
                 </Modal>
               )}
               {showCobro && (
-                <Modal title={`💰 Registrar pago de ${cobForm.tipo === "mercancia" ? "mercancía (fantasma)" : "flete"}`} onClose={() => setShowCobro(false)} w={500}>
+                <Modal title={`💰 Registrar pago de ${cobForm.tipo === "mercancia" ? "mercancía (fantasma)" : "flete"}`} onClose={() => { setShowCobro(false) }} w={500}>
                   <Fld label="Buscar pedido"><div style={{ position: "relative" }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={cobSearch} onChange={e => setCobSearch(e.target.value)} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />{cobSearch && <button onClick={() => setCobSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 12 }}>✕</button>}</div></Fld>
                   <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 8, border: "1px solid #E5E7EB", borderRadius: 8 }}>{(() => { const isMerc = cobForm.tipo === "mercancia"; const pf = data.fantasmas.filter(f => { if (f.estado === "CERRADO") return false; if (isMerc && f.clientePago) return false; if (!isMerc && (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido))) return false; if (cobSearch) { const s = cobSearch.toLowerCase(); return f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s); } return true; }); if (pf.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes</div>; return pf.map(f => { const d = isMerc ? (f.costoMercancia-(f.abonoMercancia||0)) : (f.costoFlete-(f.abonoFlete||0)); const sel = cobForm.pedidoId === f.id; return <div key={f.id} onClick={() => { setCobForm({...cobForm, pedidoId: f.id, monto: String(d)}); setCobSearch(""); }} style={{ padding: "8px 12px", cursor: "pointer", background: sel ? "#EFF6FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #2563EB" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background="#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background="#fff"; }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", fontWeight: 700 }}>{f.id}</span><strong style={{ fontSize: 11 }}>{f.cliente}</strong>{sel && <span style={{ fontSize: 8, background: "#2563EB", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>✓</span>}<span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 11, color: isMerc ? "#DC2626" : "#2563EB" }}>Debe: {fmt(d)}</span></div><div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion} · {f.cantBultos||1} {f.empaque||"bulto"}{(f.cantBultos||1)>1?"s":""}</div></div>; }); })()}</div>
                   {cobForm.pedidoId && (() => { const pf = data.fantasmas.find(x => x.id === cobForm.pedidoId); if (!pf) return null; const isMerc = cobForm.tipo === "mercancia"; const tot = isMerc ? pf.costoMercancia : (pf.costoFlete||0); const ab = isMerc ? (pf.abonoMercancia||0) : (pf.abonoFlete||0); return <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 8, border: "1px solid #E5E7EB", fontSize: 11 }}><strong>{pf.id}</strong> · {pf.cliente} · Total: {fmt(tot)} · Abonado: {fmt(ab)} · <strong style={{ color: "#DC2626" }}>Debe: {fmt(tot-ab)}</strong></div>; })()}
@@ -4548,7 +4587,7 @@ export default function App() {
                     ) : null;
                   })()}
                   <Fld label="Nota"><Inp value={cobForm.nota} onChange={e => setCobForm({...cobForm, nota: e.target.value})} placeholder="Efectivo, transferencia..." /></Fld>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => setShowCobro(false)}>Cancelar</Btn><Btn disabled={!cobForm.pedidoId || (!(parseFloat(cobForm.monto) > 0) && !(parseFloat(cobForm.montoMXN) > 0))} onClick={() => { const fId = cobForm.pedidoId; const usd = parseFloat(cobForm.monto) || 0; const mxn = parseFloat(cobForm.montoMXN) || 0; const tc = parseFloat(cobForm.tipoCambio) || 0; const mxnToUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0; const totalUSD = usd + mxnToUsd; const f = data.fantasmas.find(x => x.id === fId); if (!f || totalUSD <= 0) return; const isMerc = cobForm.tipo === "mercancia"; const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnToUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + "); const mov = { id: Date.now(), tipo: "Entrada", concepto: isMerc ? `👻 Pago mercancía — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}` : `🚛 Pago flete — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}`, monto: totalUSD, montoUSD: usd, montoMXN: mxn || null, tipoCambio: tc || null, fecha: cobForm.fecha }; let upd = {}; if (isMerc) { const na = (f.abonoMercancia||0)+totalUSD; upd = { abonoMercancia: na, clientePago: na >= f.costoMercancia, clientePagoMonto: na }; } else { const na = (f.abonoFlete||0)+totalUSD; upd = { abonoFlete: na, fletePagado: na >= (f.costoFlete||0) }; } upd.movimientos = [...(f.movimientos||[]), mov]; upd.historial = [...(f.historial||[]), { fecha: cobForm.fecha, accion: `💰 Pago ${cobForm.tipo}: ${fmt(totalUSD)} (${detalle})${cobForm.nota ? " — " + cobForm.nota : ""}`, quien: role }]; upd.fechaActualizacion = today(); let nd = { ...data, fantasmas: data.fantasmas.map(x => x.id !== fId ? x : { ...x, ...upd }) }; const label = isMerc ? "PAGO FANTASMA" : "PAGO FLETE"; if (usd > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 10, concepto: `${label} ${fId} (USD)`, monto: usd, moneda: "USD", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: f.cliente, tipoMov: "ingreso" }]; } if (mxn > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 11, concepto: `${label} ${fId} (MXN)`, monto: mxn, moneda: "MXN", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: `${f.cliente} · @${tc} = ${fmt(mxnToUsd)} USD`, tipoMov: "ingreso" }]; } persist(nd); setShowCobro(false); setCobForm({...cobForm, pedidoId: "", monto: "", montoMXN: "", tipoCambio: "", nota: ""}); }} style={{ background: "#059669" }}>💰 Registrar pago</Btn></div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => { setShowCobro(false) }}>Cancelar</Btn><Btn disabled={!cobForm.pedidoId || (!(parseFloat(cobForm.monto) > 0) && !(parseFloat(cobForm.montoMXN) > 0))} onClick={() => { const fId = cobForm.pedidoId; const usd = parseFloat(cobForm.monto) || 0; const mxn = parseFloat(cobForm.montoMXN) || 0; const tc = parseFloat(cobForm.tipoCambio) || 0; const mxnToUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0; const totalUSD = usd + mxnToUsd; const f = data.fantasmas.find(x => x.id === fId); if (!f || totalUSD <= 0) return; const isMerc = cobForm.tipo === "mercancia"; const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnToUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + "); const mov = { id: Date.now(), tipo: "Entrada", concepto: isMerc ? `👻 Pago mercancía — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}` : `🚛 Pago flete — ${detalle}${cobForm.nota ? " — " + cobForm.nota : ""}`, monto: totalUSD, montoUSD: usd, montoMXN: mxn || null, tipoCambio: tc || null, fecha: cobForm.fecha }; let upd = {}; if (isMerc) { const na = (f.abonoMercancia||0)+totalUSD; upd = { abonoMercancia: na, clientePago: na >= f.costoMercancia, clientePagoMonto: na }; } else { const na = (f.abonoFlete||0)+totalUSD; upd = { abonoFlete: na, fletePagado: na >= (f.costoFlete||0) }; } upd.movimientos = [...(f.movimientos||[]), mov]; upd.historial = [...(f.historial||[]), { fecha: cobForm.fecha, accion: `💰 Pago ${cobForm.tipo}: ${fmt(totalUSD)} (${detalle})${cobForm.nota ? " — " + cobForm.nota : ""}`, quien: role }]; upd.fechaActualizacion = today(); let nd = { ...data, fantasmas: data.fantasmas.map(x => x.id !== fId ? x : { ...x, ...upd }) }; const label = isMerc ? "PAGO FANTASMA" : "PAGO FLETE"; if (usd > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 10, concepto: `${label} ${fId} (USD)`, monto: usd, moneda: "USD", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: f.cliente, tipoMov: "ingreso" }]; } if (mxn > 0) { nd.gastosBodega = [...(nd.gastosBodega || []), { id: Date.now() + 11, concepto: `${label} ${fId} (MXN)`, monto: mxn, moneda: "MXN", categoria: isMerc ? "COBRO FANTASMA" : "COBRO FLETE", fecha: cobForm.fecha, nota: `${f.cliente} · @${tc} = ${fmt(mxnToUsd)} USD`, tipoMov: "ingreso" }]; } persist(nd); setShowCobro(false); setCobForm({...cobForm, pedidoId: "", monto: "", montoMXN: "", tipoCambio: "", nota: ""}); }} style={{ background: "#059669" }}>💰 Registrar pago</Btn></div>
                 </Modal>
               )}
               {confirm && (() => { const cf = data.fantasmas.find(x => x.id === confirm); return cf ? (
@@ -4948,7 +4987,7 @@ export default function App() {
           </div>
         )}
         {showMov && (
-          <Modal title={movForm.tipo === "ingreso" ? "💰 Registrar ingreso" : movForm.tipo === "egreso" ? "💸 Registrar gasto" : movForm.tipo === "envio" ? "📤 Enviar a bodega" : movForm.tipo === "cambio" ? "💱 Cambio de moneda" : "📥 Recibir de bodega"} onClose={() => setShowMov(false)} w={480}>
+          <Modal title={movForm.tipo === "ingreso" ? "💰 Registrar ingreso" : movForm.tipo === "egreso" ? "💸 Registrar gasto" : movForm.tipo === "envio" ? "📤 Enviar a bodega" : movForm.tipo === "cambio" ? "💱 Cambio de moneda" : "📥 Recibir de bodega"} onClose={() => { setShowMov(false) }} w={480}>
             {/* Cambio de moneda */}
             {movForm.tipo === "cambio" && (
               <div>
@@ -4977,7 +5016,7 @@ export default function App() {
                 <Fld label="Fecha"><Inp type="date" value={movForm.fecha} onChange={e => setMovForm({ ...movForm, fecha: e.target.value })} /></Fld>
                 <Fld label="Nota (opcional)"><Inp value={movForm.nota} onChange={e => setMovForm({ ...movForm, nota: e.target.value })} placeholder="Casa de cambio, lugar..." /></Fld>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-                  <Btn v="secondary" onClick={() => setShowMov(false)}>Cancelar</Btn>
+                  <Btn v="secondary" onClick={() => { setShowMov(false) }}>Cancelar</Btn>
                   <Btn disabled={!(parseFloat(movForm.monto) > 0) || !(parseFloat(movForm.tipoCambio) > 0)} onClick={() => {
                     const mo = parseFloat(movForm.monto);
                     const tc = parseFloat(movForm.tipoCambio);
@@ -5052,7 +5091,7 @@ export default function App() {
             )}
             <Fld label="Nota"><Inp value={movForm.nota} onChange={e => setMovForm({ ...movForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-              <Btn v="secondary" onClick={() => setShowMov(false)}>Cancelar</Btn>
+              <Btn v="secondary" onClick={() => { setShowMov(false) }}>Cancelar</Btn>
               <Btn disabled={!movForm.concepto || !(parseFloat(movForm.monto) > 0) || (movForm.tipo === "a_fondo" && !movForm.fondoKey)} onClick={registrar} style={{ background: movForm.tipo === "ingreso" ? "#059669" : movForm.tipo === "envio" ? "#2563EB" : movForm.tipo === "recibir" ? "#7C3AED" : movForm.tipo === "a_fondo" ? "#D97706" : "#DC2626" }}>{movForm.tipo === "ingreso" ? "💰 Registrar ingreso" : movForm.tipo === "envio" ? "📤 Enviar" : movForm.tipo === "recibir" ? "📥 Recibir" : movForm.tipo === "a_fondo" ? "🏦 Transferir a fondo" : "💸 Registrar gasto"}</Btn>
             </div></>}
           </Modal>
@@ -5289,7 +5328,7 @@ export default function App() {
 
         {/* Modal nuevo adelanto */}
         {showAdelanto && (
-          <Modal title="💸 Nuevo adelanto" onClose={() => setShowAdelanto(false)} w={480}>
+          <Modal title="💸 Nuevo adelanto" onClose={() => { setShowAdelanto(false) }} w={480}>
             <Fld label="Pedido">
               <div style={{ position: "relative", marginBottom: 4 }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={adelForm.pedSearch} onChange={e => setAdelForm({ ...adelForm, pedSearch: e.target.value })} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
             </Fld>
@@ -5299,7 +5338,7 @@ export default function App() {
             <div style={{ display: "flex", gap: 8 }}><Fld label="Monto *"><Inp type="number" value={adelForm.monto} onChange={e => setAdelForm({ ...adelForm, monto: e.target.value })} placeholder="0.00" /></Fld><Fld label="Fecha"><Inp type="date" value={adelForm.fecha} onChange={e => setAdelForm({ ...adelForm, fecha: e.target.value })} /></Fld></div>
             {parseFloat(adelForm.monto) > saldoAdmin && <div style={{ background: "#FEE2E2", borderRadius: 6, padding: "6px 10px", border: "1px solid #FECACA", marginBottom: 6, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>⚠️ Saldo insuficiente ({fmt(saldoAdmin)})</div>}
             <Fld label="Nota"><Inp value={adelForm.nota} onChange={e => setAdelForm({ ...adelForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => setShowAdelanto(false)}>Cancelar</Btn><Btn disabled={!adelForm.pedidoId || !adelForm.monto || parseFloat(adelForm.monto) > saldoAdmin} onClick={() => { const monto = parseFloat(adelForm.monto) || 0; const refId = Date.now(); const a = { id: refId, pedidoId: adelForm.pedidoId, monto, fecha: adelForm.fecha, nota: adelForm.nota, recuperado: false, movRef: refId + 1 }; const egr = { id: refId + 1, concepto: `ADELANTO ${adelForm.pedidoId}`, monto, montoUSD: monto, montoMXN: null, moneda: "USD", tipoCambio: null, destino: "ADMIN", fecha: adelForm.fecha, nota: adelForm.nota, tipoMov: "egreso", adelantoRef: refId }; let nd = { ...data, adelantosAdmin: [...adelantos, a], gastosAdmin: [...(data.gastosAdmin || []), egr] }; nd.fantasmas = nd.fantasmas.map(f => f.id !== adelForm.pedidoId ? f : { ...f, adelantoAdmin: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: adelForm.fecha, accion: `💸 Admin adelantó ${fmt(monto)}`, quien: role }] }); persist(nd); setShowAdelanto(false); }} style={{ background: "#D97706" }}>💸 Registrar</Btn></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}><Btn v="secondary" onClick={() => { setShowAdelanto(false) }}>Cancelar</Btn><Btn disabled={!adelForm.pedidoId || !adelForm.monto || parseFloat(adelForm.monto) > saldoAdmin} onClick={() => { const monto = parseFloat(adelForm.monto) || 0; const refId = Date.now(); const a = { id: refId, pedidoId: adelForm.pedidoId, monto, fecha: adelForm.fecha, nota: adelForm.nota, recuperado: false, movRef: refId + 1 }; const egr = { id: refId + 1, concepto: `ADELANTO ${adelForm.pedidoId}`, monto, montoUSD: monto, montoMXN: null, moneda: "USD", tipoCambio: null, destino: "ADMIN", fecha: adelForm.fecha, nota: adelForm.nota, tipoMov: "egreso", adelantoRef: refId }; let nd = { ...data, adelantosAdmin: [...adelantos, a], gastosAdmin: [...(data.gastosAdmin || []), egr] }; nd.fantasmas = nd.fantasmas.map(f => f.id !== adelForm.pedidoId ? f : { ...f, adelantoAdmin: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: adelForm.fecha, accion: `💸 Admin adelantó ${fmt(monto)}`, quien: role }] }); persist(nd); setShowAdelanto(false); }} style={{ background: "#D97706" }}>💸 Registrar</Btn></div>
           </Modal>
         )}
 
@@ -6201,6 +6240,17 @@ export default function App() {
         <span style={{ background: "rgba(255,255,255,.1)", padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {navItems.find(n => n.k === view)?.l || ROLE_NAMES[role]}
         </span>
+        {/* Online users indicator */}
+        {onlineUsers.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            {onlineUsers.map(u => (
+              <div key={u.user} title={`${u.user} — ${u.label} (en línea)`} style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.4)", borderRadius: 10, padding: "2px 7px" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", flexShrink: 0 }} />
+                <span style={{ fontSize: 9, fontWeight: 600, color: "#6EE7B7", whiteSpace: "nowrap" }}>{u.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {/* Save status indicator */}
         {saveStatus === "saving" && <span style={{ fontSize: 9, color: "#94A3B8", flexShrink: 0 }}>💾...</span>}
         {saveStatus === "error" && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "2px 6px", borderRadius: 3, flexShrink: 0 }}>❌ Firebase error</span>}
@@ -6208,7 +6258,11 @@ export default function App() {
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {stats.pend > 0 && <span style={{ background: "#DC2626", color: "#fff", padding: "1px 7px", borderRadius: 8, fontSize: 9, fontWeight: 600 }}>{stats.pend}</span>}
-          <button onClick={() => { setRole(null); setCurrentUser(null); setLoginUser(""); setLoginPass(""); setView("main"); setMenuOpen(false); try { localStorage.removeItem("ot_role"); localStorage.removeItem("ot_user"); } catch {} }} style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", color: "#94A3B8", padding: "4px 10px", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>Salir</button>
+          <button onClick={() => { 
+            if (currentUser) setDoc(doc(db, "presence", currentUser), { user: currentUser, role, online: false, lastSeen: Date.now() });
+            setRole(null); setCurrentUser(null); setLoginUser(""); setLoginPass(""); setView("main"); setMenuOpen(false); 
+            try { localStorage.removeItem("ot_role"); localStorage.removeItem("ot_user"); } catch {} 
+          }} style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)", color: "#94A3B8", padding: "4px 10px", borderRadius: 5, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>Salir</button>
         </div>
       </header>
 
@@ -6272,7 +6326,7 @@ export default function App() {
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "18px 24px" }}>
         {/* Botón atrás — aparece en todas las pantallas excepto home */}
         {view !== "main" && view !== "detail" && view !== "home" && (
-          <button onClick={() => { setView("home"); setSelId(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
+          <button onClick={() => { setView("home"); setSelId(null) }} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#6B7280", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 500, marginBottom: 12, padding: "4px 0" }}>
             ← Inicio
           </button>
         )}
