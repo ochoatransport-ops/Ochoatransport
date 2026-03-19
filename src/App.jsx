@@ -4532,91 +4532,82 @@ export default function App() {
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
       const isMerc = pagoTab === "mercancia";
+
       const all = data.fantasmas.filter(f => f.estado !== "CERRADO");
-      const pagados = all.filter(f => isMerc ? f.clientePago : f.fletePagado);
-      const pendientes = all.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)));
-      const totalPend = isMerc
-        ? pendientes.reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0)
-        : pendientes.reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
-      const totalPag = isMerc
-        ? pagados.reduce((s, f) => s + (f.totalVenta || f.costoMercancia), 0)
-        : pagados.reduce((s, f) => s + (f.costoFlete || 0), 0);
-
-      const filtered = (lista) => {
-        if (!busqueda) return lista;
+      let lista = all;
+      if (busqueda) {
         const s = busqueda.toLowerCase();
-        return lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion || "").toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
-      };
+        lista = lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion || "").toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
+      }
 
-      const mkRow = (f, paid) => {
-        const monto = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
-        const abono = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
-        const saldo = monto - abono;
-        return (
-          <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: paid ? "#F9FAFB" : "#fff", borderRadius: 8, border: paid ? "1px solid #E5E7EB" : "1px solid #FEE2E2", marginBottom: 4, cursor: "pointer" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
-                {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}
-                <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
-                <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
-              </div>
-              <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion || "—"}{f.proveedor ? ` · ${f.proveedor}` : ""}</div>
-            </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              {paid
-                ? <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(monto)} ✓</span>
-                : <>
-                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: saldo > 0 ? "#DC2626" : "#059669" }}>
-                    {isMerc ? "👻" : "🚛"} {f.fleteDesconocido && !isMerc ? "❓" : fmt(saldo)}
-                  </div>
-                  {abono > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Abono: {fmt(abono)}</div>}
-                </>
-              }
-            </div>
-            <I.Right />
-          </div>
-        );
-      };
+      const totalPend = isMerc
+        ? lista.filter(f => !f.clientePago).reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0)
+        : lista.filter(f => !f.fletePagado && f.costoFlete > 0).reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
+      const totalPag = isMerc
+        ? lista.filter(f => f.clientePago).reduce((s, f) => s + (f.totalVenta || f.costoMercancia), 0)
+        : lista.filter(f => f.fletePagado).reduce((s, f) => s + (f.costoFlete || 0), 0);
+
+      const th = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#1A2744", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap", cursor: "pointer" };
 
       return (
         <div>
-          {/* Stats */}
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 120px", background: "#FEF2F2", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B" }}>PENDIENTE</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#991B1B" }}>{isMerc ? "👻" : "🚛"} PENDIENTE</div>
               <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPend)}</div>
-              <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pendientes.length} pedidos</div>
             </div>
             <div style={{ flex: "1 1 120px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>COBRADO</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>{isMerc ? "👻" : "🚛"} COBRADO</div>
               <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div>
-              <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pagados.length} pedidos</div>
             </div>
           </div>
-          {/* Search */}
           <div style={{ position: "relative", marginBottom: 10 }}>
             <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
           </div>
-          {/* Pendientes */}
-          {filtered(pendientes).length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>{isMerc ? "👻" : "🚛"} Pendientes ({filtered(pendientes).length})</div>
-              {filtered(pendientes).map(f => mkRow(f, false))}
-            </div>
-          )}
-          {/* Pagados */}
-          {filtered(pagados).length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginBottom: 6 }}>✅ {isMerc ? "Cobrados" : "Pagados"} ({filtered(pagados).length})</div>
-              {filtered(pagados).slice(0, 30).map(f => mkRow(f, true))}
-              {filtered(pagados).length > 30 && <div style={{ fontSize: 10, color: "#9CA3AF", textAlign: "center", padding: 8 }}>+{filtered(pagados).length - 30} más en Bitácora</div>}
-            </div>
-          )}
-          {filtered(pendientes).length === 0 && filtered(pagados).length === 0 && (
-            <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><p style={{ fontSize: 12 }}>No hay resultados.</p></div>
-          )}
+          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "60vh" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+              <thead><tr>
+                <th style={th}>Folio</th>
+                <th style={th}>Proveedor</th>
+                <th style={th}>Cliente</th>
+                <th style={th}>Mercancía</th>
+                <th style={th}>Empaque</th>
+                <th style={th}>Estado</th>
+                <th style={th}>{isMerc ? "👻 Costo" : "🚛 Flete"}</th>
+                <th style={th}>{isMerc ? "👻 Pagó" : "🚛 Pagó"}</th>
+              </tr></thead>
+              <tbody>{lista.map((f, i) => {
+                const td = { padding: "7px 8px", borderBottom: "1px solid #F3F4F6" };
+                const go = () => { setDetailMode("full"); navigate("detail", f.id, view); };
+                const monto = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
+                const abono = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
+                const pagado = isMerc ? f.clientePago : f.fletePagado;
+                const desconocido = isMerc ? f.costoDesconocido : f.fleteDesconocido;
+                return (
+                  <tr key={f.id} style={{ cursor: "pointer", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onClick={go} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
+                    <td style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600 }}>{f.id}</td>
+                    <td style={{ ...td, color: "#D97706", fontWeight: 600 }}>{f.proveedor || "—"}</td>
+                    <td style={{ ...td, fontWeight: 600 }}>{f.cliente}</td>
+                    <td style={{ ...td, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion || "—"}</td>
+                    <td style={{ ...td, color: "#6B7280", whiteSpace: "nowrap" }}>{f.empaque ? `${f.cantBultos || 1} ${f.empaque}` : "—"}</td>
+                    <td style={{ ...td, padding: "6px 4px" }}><Badge estado={f.estado} /></td>
+                    <td style={{ ...td, fontFamily: "monospace", fontWeight: 700, textAlign: "right", color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB" }}>{desconocido ? "❓" : monto ? fmt(monto) : "—"}</td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      {pagado
+                        ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
+                        : abono > 0
+                          ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(abono)}</span>
+                          : desconocido
+                            ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
+                            : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>
+                      }
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
         </div>
       );
     };
