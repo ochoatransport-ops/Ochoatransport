@@ -627,6 +627,258 @@ const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Moda
   );
 };
 
+
+// ============ TRANSFERENCIAS TJ (module-level) ============
+const TransferenciasTJ = ({ showTransApp, setShowTransApp, tFormTipo, setTFormTipo, data, updF, persist, role, today, fmt, fmtD, Modal, Btn, Fld, Inp, I, filterByDate, showConfirm, navigate }) => {
+  const [tjTransSearch, setTjTransSearch] = useState("");
+  const showTrans = showTransApp; const setShowTrans = setShowTransApp;
+  const [editId, setEditId] = useState(null);
+  const [tForm, setTFormLocal] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: "", nota: "", tipo: tFormTipo });
+  const setTForm = (v) => { const nv = typeof v === "function" ? v(tForm) : v; if (nv.tipo !== tForm.tipo) setTFormTipo(nv.tipo); setTFormLocal(nv); };
+
+  const CUENTAS = [
+    { id: "scotiabank", banco: "SCOTIABANK", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "5579 2091 5461 3159", clabe: "044028256059014716", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
+    { id: "banorte", banco: "BANORTE", titular: "Ismael Ochoa", tarjeta: "4189 1430 9762 5597", clabe: "072028013241127587", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
+    { id: "azteca_cinthia", banco: "BANCO AZTECA", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "4027 6661 0513 0560", clabe: "1270 2801 3077 598361", color: "#2563EB", uso: "fantasma", tag: "👻 MERCANCÍA" },
+    { id: "azteca_ismael", banco: "BANCO AZTECA", titular: "Ismael Ochoa Duran", tarjeta: "5343 8102 0981 8688", clabe: "1270 2800 1671 744594", color: "#2563EB", uso: "fantasma", tag: "👻 MERCANCÍA" },
+  ];
+
+  const transferencias = filterByDate(data.transferencias || [], "fecha");
+  const totalMXN = transferencias.reduce((s, t) => s + (t.montoMXN || 0), 0);
+  const totalUSD = transferencias.reduce((s, t) => s + (t.montoUSD || 0), 0);
+
+  const registrarTrans = () => {
+    const mxn = parseFloat(tForm.montoMXN) || 0;
+    const usd = parseFloat(tForm.montoUSD) || 0;
+    const tc = parseFloat(tForm.tipoCambio) || 0;
+    const montoConvertido = tForm.moneda === "MXN" && tc > 0 ? Math.round(mxn / tc * 100) / 100 : usd;
+    if (!tForm.pedidoId || (!mxn && !usd) || !tForm.cuenta) return;
+    const cuenta = CUENTAS.find(c => c.id === tForm.cuenta);
+    const pf = data.fantasmas.find(f => f.id === tForm.pedidoId);
+    let nd = { ...data };
+
+    // If editing, first revert old abono
+    if (editId) {
+      const old = (data.transferencias || []).find(t => t.id === editId);
+      if (old && old.confirmada) {
+        if (old.tipo === "flete") {
+          nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)), fletePagado: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)) >= (f.costoFlete || 0) });
+        } else {
+          nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)), clientePago: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)) >= f.costoMercancia });
+        }
+      }
+      nd.transferencias = (nd.transferencias || []).map(t => t.id !== editId ? t : { ...t, pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false });
+    } else {
+      // Nueva transferencia: pendiente de confirmación — NO marca como pagado aún
+      const t = { id: Date.now(), pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false };
+      nd.transferencias = [...(nd.transferencias || []), t];
+      // Mark pedido as TRANS_PENDIENTE — has funds coming, not paid yet
+      nd.fantasmas = nd.fantasmas.map(f => f.id !== tForm.pedidoId ? f : {
+        ...f,
+        dineroStatus: "TRANS_PENDIENTE",
+        transferenciaPendiente: true,
+        fechaActualizacion: today(),
+        historial: [...(f.historial || []), { fecha: tForm.fecha, accion: `🏦 Transferencia registrada (pendiente confirmación): ${tForm.moneda === "MXN" ? `$${mxn} MXN @${tc}` : `$${usd} USD`} → ${cuenta?.banco}`, quien: role }]
+      });
+    }
+    persist(nd);
+    setShowTrans(false);
+    setEditId(null);
+  };
+
+  const eliminarTrans = async (tId) => {
+    const tr = (data.transferencias || []).find(t => t.id === tId);
+    if (!tr) return;
+    if (!await showConfirm(`¿Eliminar transferencia?\n\n${tr.cliente || ""} — ${tr.tipo === "flete" ? "🚛 Flete" : "👻 Fantasma"} — ${tr.montoMXN ? `$${tr.montoMXN} MXN` : fmt(tr.montoUSD)}`)) return;
+    let nd = { ...data, transferencias: (data.transferencias || []).filter(t => t.id !== tId) };
+    // Revert pedido status
+    nd.fantasmas = nd.fantasmas.map(f => {
+      if (f.id !== tr.pedidoId) return f;
+      if (tr.tipo === "flete") {
+        const nuevoAbono = Math.max(0, (f.abonoFlete || 0) - (tr.montoUSD || 0));
+        return { ...f, abonoFlete: nuevoAbono, fletePagado: nuevoAbono >= (f.costoFlete || 0) };
+      } else {
+        const nuevoAbono = Math.max(0, (f.abonoMercancia || 0) - (tr.montoUSD || 0));
+        // Also revert TRANS_PENDIENTE status if no other pending transfers remain
+        const otrasTrans = (nd.transferencias || []).filter(t => t.pedidoId === f.id && !t.confirmada && !t.noRecibida);
+        const dineroStatus = otrasTrans.length === 0 && !nuevoAbono ? "SIN_FONDOS" : f.dineroStatus === "TRANS_PENDIENTE" && otrasTrans.length === 0 ? "SIN_FONDOS" : f.dineroStatus;
+        return { ...f, abonoMercancia: nuevoAbono, clientePago: nuevoAbono >= f.costoMercancia, transferenciaPendiente: otrasTrans.length > 0, dineroStatus };
+      }
+    });
+    persist(nd);
+  };
+
+  const fmtMXN = (n) => "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED" }}>🏦 Transferencias recibidas</div>
+        <Btn onClick={() => { setEditId(null); setTForm({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" }); setShowTrans(true); }} style={{ background: "#7C3AED" }}><I.Plus /> Nueva transferencia</Btn>
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 120px", background: "#F5F3FF", borderRadius: 8, padding: "10px 14px", border: "1px solid #E9D5FF" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#7C3AED" }}>TOTAL MXN</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#7C3AED" }}>{fmtMXN(totalMXN)}</div></div>
+        <div style={{ flex: "1 1 120px", background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", border: "1px solid #BFDBFE" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#2563EB" }}>TOTAL USD (convertido)</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#2563EB" }}>{fmt(totalUSD)}</div></div>
+        <div style={{ flex: "1 1 120px", background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280" }}>REGISTRADAS</div><div style={{ fontSize: 18, fontWeight: 700, color: "#374151" }}>{transferencias.length}</div></div>
+      </div>
+
+      {/* List */}
+      <div style={{ position: "relative", marginBottom: 8 }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={tjTransSearch} onChange={e => setTjTransSearch(e.target.value)} placeholder="Buscar folio, cliente, banco..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
+      {(() => { const s = tjTransSearch.toLowerCase(); const tList = transferencias.filter(t => !s || (t.cliente || "").toLowerCase().includes(s) || (t.pedidoId || "").toLowerCase().includes(s) || (t.banco || "").toLowerCase().includes(s) || (t.nota || "").toLowerCase().includes(s)); return tList.length === 0 ? <p style={{ textAlign: "center", color: "#9CA3AF", fontSize: 11, padding: 30 }}>No hay transferencias{tjTransSearch ? ` con "${tjTransSearch}"` : ""}.</p> : (
+        <div style={{ maxHeight: 400, overflow: "auto" }}>
+          {[...tList].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || b.id - a.id).map(t => {
+            const pf = data.fantasmas.find(f => f.id === t.pedidoId);
+            return (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB", borderLeft: `3px solid ${t.tipo === "flete" ? "#2563EB" : "#DC2626"}`, marginBottom: 4, fontSize: 11 }}>
+                <span style={{ color: "#9CA3AF", fontSize: 9, minWidth: 50 }}>{fmtD(t.fecha)}</span>
+                <span style={{ fontSize: 9, background: t.tipo === "flete" ? "#DBEAFE" : "#FEE2E2", color: t.tipo === "flete" ? "#1E40AF" : "#991B1B", padding: "1px 6px", borderRadius: 3, fontWeight: 600 }}>{t.tipo === "flete" ? "🚛 FLETE" : "👻 FANTASMA"}</span>
+                <span style={{ fontFamily: "monospace", fontSize: 9, color: "#9CA3AF" }}>{t.pedidoId}</span>
+                <strong>{t.cliente || pf?.cliente || "—"}</strong>
+                <span style={{ flex: 1, color: "#6B7280" }}>{pf?.descripcion || ""}</span>
+                <span style={{ fontSize: 9, background: "#F3F4F6", padding: "1px 5px", borderRadius: 3, color: "#6B7280" }}>{t.banco}</span>
+                {t.montoMXN > 0 && <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmtMXN(t.montoMXN)} MXN</span>}
+                {t.tipoCambio > 0 && <span style={{ fontSize: 9, color: "#9CA3AF" }}>@{t.tipoCambio}</span>}
+                <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>{fmt(t.montoUSD)}</span>
+                {t.confirmada && <span style={{ fontSize: 8, background: "#D1FAE5", color: "#065F46", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>✅ CONFIRMADA</span>}
+                {t.noRecibida && <span style={{ fontSize: 8, background: "#FEE2E2", color: "#991B1B", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>❌ NO RECIBIDA</span>}
+                {!t.confirmada && !t.noRecibida && <button onClick={() => { setEditId(t.id); setTForm({ pedidoId: t.pedidoId, pedSearch: "", montoMXN: String(t.montoMXN || ""), tipoCambio: String(t.tipoCambio || ""), montoUSD: String(t.montoUSD || ""), moneda: t.moneda || "MXN", cuenta: t.cuentaId || "", fecha: t.fecha, nota: t.nota || "", tipo: t.tipo }); setShowTrans(true); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#2563EB"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Edit /></button>}
+                {!t.confirmada && <button onClick={() => eliminarTrans(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>}
+              </div>
+            );
+          })}
+        </div>
+      ); })()}
+
+      {/* Modal */}
+      {showTrans && (
+        <Modal title={editId ? "✏️ Editar transferencia" : "🏦 Registrar transferencia"} onClose={() => { setShowTrans(false); setEditId(null); }} w={520}>
+          {/* Tipo */}
+          <Fld label="Tipo de pago">
+            <div style={{ display: "flex", gap: 3 }}>
+              <button onClick={() => setTForm({ ...tForm, tipo: "flete", cuenta: "" })} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: tForm.tipo === "flete" ? "2px solid #2563EB" : "1px solid #D1D5DB", background: tForm.tipo === "flete" ? "#EFF6FF" : "#fff", color: tForm.tipo === "flete" ? "#2563EB" : "#6B7280", fontWeight: tForm.tipo === "flete" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>🚛 Flete</button>
+              <button onClick={() => setTForm({ ...tForm, tipo: "fantasma", cuenta: "" })} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: tForm.tipo === "fantasma" ? "2px solid #DC2626" : "1px solid #D1D5DB", background: tForm.tipo === "fantasma" ? "#FEF2F2" : "#fff", color: tForm.tipo === "fantasma" ? "#DC2626" : "#6B7280", fontWeight: tForm.tipo === "fantasma" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>👻 Fantasma</button>
+            </div>
+          </Fld>
+
+          {/* Pedido */}
+          <Fld label="Pedido">
+            <div style={{ position: "relative", marginBottom: 4 }}>
+              <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+              <input value={tForm.pedSearch} onChange={e => setTForm({ ...tForm, pedSearch: e.target.value })} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+            </div>
+          </Fld>
+          <div style={{ maxHeight: 130, overflow: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8 }}>
+            {(() => {
+              const isFlete = tForm.tipo === "flete";
+              let peds = data.fantasmas.filter(f => {
+                if (f.estado === "CERRADO") return false;
+                // Exclude if already paid for this type
+                if (isFlete && f.fletePagado) return false;
+                if (!isFlete && f.clientePago) return false;
+                // Exclude if already has a pending transfer for this type
+                const yaTransferido = (data.transferencias || []).some(t =>
+                  t.pedidoId === f.id && t.tipo === tForm.tipo && !t.confirmada && !t.noRecibida && t.id !== editId
+                );
+                if (yaTransferido) return false;
+                return true;
+              });
+              if (tForm.pedSearch) { const s = tForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); }
+              if (peds.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes de {isFlete ? "flete" : "fantasma"}</div>;
+              return peds.slice(0, 15).map(f => {
+                const sel = tForm.pedidoId === f.id;
+                const monto = tForm.tipo === "flete" ? (f.costoFlete || 0) : f.costoMercancia;
+                return (
+                  <div key={f.id} onClick={() => setTForm({ ...tForm, pedidoId: f.id, pedSearch: "" })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#F5F3FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #7C3AED" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "#fff"; }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, color: "#9CA3AF" }}>{f.id}</span>
+                      <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
+                      {sel && <span style={{ fontSize: 8, background: "#7C3AED", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
+                      <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: tForm.tipo === "flete" ? "#2563EB" : "#DC2626" }}>{fmt(monto)}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          {/* Cuenta bancaria */}
+          <Fld label="Cuenta de depósito *">
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {CUENTAS.filter(c => c.uso === tForm.tipo).length > 0 ? CUENTAS.filter(c => c.uso === tForm.tipo).map(c => {
+                const sel = tForm.cuenta === c.id;
+                return (
+                  <div key={c.id} onClick={() => setTForm({ ...tForm, cuenta: c.id })} style={{ padding: "8px 12px", borderRadius: 8, border: sel ? `2px solid ${c.color}` : "1px solid #E5E7EB", background: sel ? (c.uso === "flete" ? "#FEF2F2" : "#EFF6FF") : "#fff", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.color }}>{c.banco}</span>
+                      <span style={{ fontSize: 8, background: c.uso === "flete" ? "#FEE2E2" : "#DBEAFE", color: c.uso === "flete" ? "#991B1B" : "#1E40AF", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>{c.tag}</span>
+                      {sel && <span style={{ fontSize: 8, background: c.color, color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#374151", fontWeight: 600 }}>{c.titular}</div>
+                    <div style={{ fontSize: 9, color: "#9CA3AF" }}>Tarjeta: {c.tarjeta} · CLABE: {c.clabe}</div>
+                  </div>
+                );
+              }) : (
+                <div style={{ padding: 12, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay cuentas para este tipo.</div>
+              )}
+              {CUENTAS.filter(c => c.uso !== tForm.tipo).length > 0 && (
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 10, color: "#9CA3AF" }}>Ver otras cuentas ({CUENTAS.filter(c => c.uso !== tForm.tipo)[0].tag})</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                    {CUENTAS.filter(c => c.uso !== tForm.tipo).map(c => {
+                      const sel = tForm.cuenta === c.id;
+                      return (
+                        <div key={c.id} onClick={() => setTForm({ ...tForm, cuenta: c.id })} style={{ padding: "8px 12px", borderRadius: 8, border: sel ? `2px solid ${c.color}` : "1px solid #E5E7EB", background: sel ? "#FAFBFC" : "#fff", cursor: "pointer", opacity: 0.7 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: c.color }}>{c.banco}</span>
+                            <span style={{ fontSize: 8, background: c.uso === "flete" ? "#FEE2E2" : "#DBEAFE", color: c.uso === "flete" ? "#991B1B" : "#1E40AF", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>{c.tag}</span>
+                            {sel && <span style={{ fontSize: 8, background: c.color, color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#374151", fontWeight: 600 }}>{c.titular}</div>
+                          <div style={{ fontSize: 9, color: "#9CA3AF" }}>Tarjeta: {c.tarjeta} · CLABE: {c.clabe}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
+            </div>
+          </Fld>
+
+          {/* Moneda y monto */}
+          <Fld label="Moneda">
+            <div style={{ display: "flex", gap: 3 }}>
+              <button onClick={() => setTForm({ ...tForm, moneda: "MXN", montoUSD: "" })} style={{ flex: 1, padding: "6px 12px", borderRadius: 6, border: tForm.moneda === "MXN" ? "2px solid #D97706" : "1px solid #D1D5DB", background: tForm.moneda === "MXN" ? "#FEF3C7" : "#fff", color: tForm.moneda === "MXN" ? "#92400E" : "#6B7280", fontWeight: tForm.moneda === "MXN" ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🇲🇽 MXN (pesos)</button>
+              <button onClick={() => setTForm({ ...tForm, moneda: "USD", montoMXN: "", tipoCambio: "" })} style={{ flex: 1, padding: "6px 12px", borderRadius: 6, border: tForm.moneda === "USD" ? "2px solid #059669" : "1px solid #D1D5DB", background: tForm.moneda === "USD" ? "#ECFDF5" : "#fff", color: tForm.moneda === "USD" ? "#065F46" : "#6B7280", fontWeight: tForm.moneda === "USD" ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🇺🇸 USD</button>
+            </div>
+          </Fld>
+          {tForm.moneda === "MXN" ? (
+            <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Fld label="Monto MXN *"><Inp type="number" value={tForm.montoMXN} onChange={e => setTForm({ ...tForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
+                <Fld label="Tipo de cambio *"><Inp type="number" value={tForm.tipoCambio} onChange={e => setTForm({ ...tForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+              </div>
+              {tForm.montoMXN && tForm.tipoCambio && parseFloat(tForm.tipoCambio) > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: "#065F46", marginTop: 4 }}>= {fmt(parseFloat(tForm.montoMXN) / parseFloat(tForm.tipoCambio))} USD</div>}
+            </div>
+          ) : (
+            <Fld label="Monto USD *"><Inp type="number" value={tForm.montoUSD} onChange={e => setTForm({ ...tForm, montoUSD: e.target.value })} placeholder="0.00" /></Fld>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Fld label="Fecha"><Inp type="date" value={tForm.fecha} onChange={e => setTForm({ ...tForm, fecha: e.target.value })} /></Fld>
+            <Fld label="Nota"><Inp value={tForm.nota} onChange={e => setTForm({ ...tForm, nota: e.target.value })} placeholder="Referencia, concepto..." /></Fld>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
+            <Btn v="secondary" onClick={() => { setShowTrans(false) }}>Cancelar</Btn>
+            <Btn disabled={!tForm.pedidoId || !tForm.cuenta || (tForm.moneda === "MXN" ? (!tForm.montoMXN || !tForm.tipoCambio) : !tForm.montoUSD)} onClick={registrarTrans} style={{ background: "#7C3AED" }}>{editId ? "✏️ Guardar cambios" : "🏦 Registrar transferencia"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [data, setData] = useState(init());
   const [loading, setLoading] = useState(true);
@@ -656,7 +908,7 @@ export default function App() {
   const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
   const [showTransApp, setShowTransApp] = useState(false);
-  const [tFormApp, setTFormApp] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: "", nota: "", tipo: "flete" });
+  const [tFormTipo, setTFormTipo] = useState("flete"); // only tipo lives at App level to survive re-renders
   const [search, setSearch] = useState("");
   const [fEst, setFEst] = useState("ALL");
 
@@ -4170,254 +4422,7 @@ export default function App() {
 
     // Flujo de Efectivo
     // TransferenciasTJ
-    const TransferenciasTJ = () => {
-      const [tjTransSearch, setTjTransSearch] = useState("");
-      const showTrans = showTransApp; const setShowTrans = setShowTransApp;
-      const [editId, setEditId] = useState(null);
-      const tForm = tFormApp; const setTForm = setTFormApp;
 
-      const CUENTAS = [
-        { id: "scotiabank", banco: "SCOTIABANK", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "5579 2091 5461 3159", clabe: "044028256059014716", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
-        { id: "banorte", banco: "BANORTE", titular: "Ismael Ochoa", tarjeta: "4189 1430 9762 5597", clabe: "072028013241127587", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
-        { id: "azteca_cinthia", banco: "BANCO AZTECA", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "4027 6661 0513 0560", clabe: "1270 2801 3077 598361", color: "#2563EB", uso: "fantasma", tag: "👻 MERCANCÍA" },
-        { id: "azteca_ismael", banco: "BANCO AZTECA", titular: "Ismael Ochoa Duran", tarjeta: "5343 8102 0981 8688", clabe: "1270 2800 1671 744594", color: "#2563EB", uso: "fantasma", tag: "👻 MERCANCÍA" },
-      ];
-
-      const transferencias = filterByDate(data.transferencias || [], "fecha");
-      const totalMXN = transferencias.reduce((s, t) => s + (t.montoMXN || 0), 0);
-      const totalUSD = transferencias.reduce((s, t) => s + (t.montoUSD || 0), 0);
-
-      const registrarTrans = () => {
-        const mxn = parseFloat(tForm.montoMXN) || 0;
-        const usd = parseFloat(tForm.montoUSD) || 0;
-        const tc = parseFloat(tForm.tipoCambio) || 0;
-        const montoConvertido = tForm.moneda === "MXN" && tc > 0 ? Math.round(mxn / tc * 100) / 100 : usd;
-        if (!tForm.pedidoId || (!mxn && !usd) || !tForm.cuenta) return;
-        const cuenta = CUENTAS.find(c => c.id === tForm.cuenta);
-        const pf = data.fantasmas.find(f => f.id === tForm.pedidoId);
-        let nd = { ...data };
-
-        // If editing, first revert old abono
-        if (editId) {
-          const old = (data.transferencias || []).find(t => t.id === editId);
-          if (old && old.confirmada) {
-            if (old.tipo === "flete") {
-              nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)), fletePagado: Math.max(0, (f.abonoFlete || 0) - (old.montoUSD || 0)) >= (f.costoFlete || 0) });
-            } else {
-              nd.fantasmas = nd.fantasmas.map(f => f.id !== old.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)), clientePago: Math.max(0, (f.abonoMercancia || 0) - (old.montoUSD || 0)) >= f.costoMercancia });
-            }
-          }
-          nd.transferencias = (nd.transferencias || []).map(t => t.id !== editId ? t : { ...t, pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false });
-        } else {
-          // Nueva transferencia: pendiente de confirmación — NO marca como pagado aún
-          const t = { id: Date.now(), pedidoId: tForm.pedidoId, tipo: tForm.tipo, montoMXN: mxn || null, montoUSD: usd || montoConvertido, tipoCambio: tc || null, moneda: tForm.moneda, cuentaId: tForm.cuenta, banco: cuenta?.banco || "", titular: cuenta?.titular || "", fecha: tForm.fecha, nota: tForm.nota, cliente: pf?.cliente || "", confirmada: false };
-          nd.transferencias = [...(nd.transferencias || []), t];
-          // Mark pedido as TRANS_PENDIENTE — has funds coming, not paid yet
-          nd.fantasmas = nd.fantasmas.map(f => f.id !== tForm.pedidoId ? f : {
-            ...f,
-            dineroStatus: "TRANS_PENDIENTE",
-            transferenciaPendiente: true,
-            fechaActualizacion: today(),
-            historial: [...(f.historial || []), { fecha: tForm.fecha, accion: `🏦 Transferencia registrada (pendiente confirmación): ${tForm.moneda === "MXN" ? `$${mxn} MXN @${tc}` : `$${usd} USD`} → ${cuenta?.banco}`, quien: role }]
-          });
-        }
-        persist(nd);
-        setShowTrans(false);
-        setEditId(null);
-      };
-
-      const eliminarTrans = async (tId) => {
-        const tr = (data.transferencias || []).find(t => t.id === tId);
-        if (!tr) return;
-        if (!await showConfirm(`¿Eliminar transferencia?\n\n${tr.cliente || ""} — ${tr.tipo === "flete" ? "🚛 Flete" : "👻 Fantasma"} — ${tr.montoMXN ? `$${tr.montoMXN} MXN` : fmt(tr.montoUSD)}`)) return;
-        let nd = { ...data, transferencias: (data.transferencias || []).filter(t => t.id !== tId) };
-        // Revert pedido status
-        nd.fantasmas = nd.fantasmas.map(f => {
-          if (f.id !== tr.pedidoId) return f;
-          if (tr.tipo === "flete") {
-            const nuevoAbono = Math.max(0, (f.abonoFlete || 0) - (tr.montoUSD || 0));
-            return { ...f, abonoFlete: nuevoAbono, fletePagado: nuevoAbono >= (f.costoFlete || 0) };
-          } else {
-            const nuevoAbono = Math.max(0, (f.abonoMercancia || 0) - (tr.montoUSD || 0));
-            // Also revert TRANS_PENDIENTE status if no other pending transfers remain
-            const otrasTrans = (nd.transferencias || []).filter(t => t.pedidoId === f.id && !t.confirmada && !t.noRecibida);
-            const dineroStatus = otrasTrans.length === 0 && !nuevoAbono ? "SIN_FONDOS" : f.dineroStatus === "TRANS_PENDIENTE" && otrasTrans.length === 0 ? "SIN_FONDOS" : f.dineroStatus;
-            return { ...f, abonoMercancia: nuevoAbono, clientePago: nuevoAbono >= f.costoMercancia, transferenciaPendiente: otrasTrans.length > 0, dineroStatus };
-          }
-        });
-        persist(nd);
-      };
-
-      const fmtMXN = (n) => "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 });
-
-      return (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED" }}>🏦 Transferencias recibidas</div>
-            <Btn onClick={() => { setEditId(null); setTForm({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" }); setShowTrans(true); }} style={{ background: "#7C3AED" }}><I.Plus /> Nueva transferencia</Btn>
-          </div>
-
-          {/* Summary */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 120px", background: "#F5F3FF", borderRadius: 8, padding: "10px 14px", border: "1px solid #E9D5FF" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#7C3AED" }}>TOTAL MXN</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#7C3AED" }}>{fmtMXN(totalMXN)}</div></div>
-            <div style={{ flex: "1 1 120px", background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", border: "1px solid #BFDBFE" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#2563EB" }}>TOTAL USD (convertido)</div><div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: "#2563EB" }}>{fmt(totalUSD)}</div></div>
-            <div style={{ flex: "1 1 120px", background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}><div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280" }}>REGISTRADAS</div><div style={{ fontSize: 18, fontWeight: 700, color: "#374151" }}>{transferencias.length}</div></div>
-          </div>
-
-          {/* List */}
-          <div style={{ position: "relative", marginBottom: 8 }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={tjTransSearch} onChange={e => setTjTransSearch(e.target.value)} placeholder="Buscar folio, cliente, banco..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
-          {(() => { const s = tjTransSearch.toLowerCase(); const tList = transferencias.filter(t => !s || (t.cliente || "").toLowerCase().includes(s) || (t.pedidoId || "").toLowerCase().includes(s) || (t.banco || "").toLowerCase().includes(s) || (t.nota || "").toLowerCase().includes(s)); return tList.length === 0 ? <p style={{ textAlign: "center", color: "#9CA3AF", fontSize: 11, padding: 30 }}>No hay transferencias{tjTransSearch ? ` con "${tjTransSearch}"` : ""}.</p> : (
-            <div style={{ maxHeight: 400, overflow: "auto" }}>
-              {[...tList].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || b.id - a.id).map(t => {
-                const pf = data.fantasmas.find(f => f.id === t.pedidoId);
-                return (
-                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB", borderLeft: `3px solid ${t.tipo === "flete" ? "#2563EB" : "#DC2626"}`, marginBottom: 4, fontSize: 11 }}>
-                    <span style={{ color: "#9CA3AF", fontSize: 9, minWidth: 50 }}>{fmtD(t.fecha)}</span>
-                    <span style={{ fontSize: 9, background: t.tipo === "flete" ? "#DBEAFE" : "#FEE2E2", color: t.tipo === "flete" ? "#1E40AF" : "#991B1B", padding: "1px 6px", borderRadius: 3, fontWeight: 600 }}>{t.tipo === "flete" ? "🚛 FLETE" : "👻 FANTASMA"}</span>
-                    <span style={{ fontFamily: "monospace", fontSize: 9, color: "#9CA3AF" }}>{t.pedidoId}</span>
-                    <strong>{t.cliente || pf?.cliente || "—"}</strong>
-                    <span style={{ flex: 1, color: "#6B7280" }}>{pf?.descripcion || ""}</span>
-                    <span style={{ fontSize: 9, background: "#F3F4F6", padding: "1px 5px", borderRadius: 3, color: "#6B7280" }}>{t.banco}</span>
-                    {t.montoMXN > 0 && <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmtMXN(t.montoMXN)} MXN</span>}
-                    {t.tipoCambio > 0 && <span style={{ fontSize: 9, color: "#9CA3AF" }}>@{t.tipoCambio}</span>}
-                    <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>{fmt(t.montoUSD)}</span>
-                    {t.confirmada && <span style={{ fontSize: 8, background: "#D1FAE5", color: "#065F46", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>✅ CONFIRMADA</span>}
-                    {t.noRecibida && <span style={{ fontSize: 8, background: "#FEE2E2", color: "#991B1B", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>❌ NO RECIBIDA</span>}
-                    {!t.confirmada && !t.noRecibida && <button onClick={() => { setEditId(t.id); setTForm({ pedidoId: t.pedidoId, pedSearch: "", montoMXN: String(t.montoMXN || ""), tipoCambio: String(t.tipoCambio || ""), montoUSD: String(t.montoUSD || ""), moneda: t.moneda || "MXN", cuenta: t.cuentaId || "", fecha: t.fecha, nota: t.nota || "", tipo: t.tipo }); setShowTrans(true); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#2563EB"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Edit /></button>}
-                    {!t.confirmada && <button onClick={() => eliminarTrans(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>}
-                  </div>
-                );
-              })}
-            </div>
-          ); })()}
-
-          {/* Modal */}
-          {showTrans && (
-            <Modal title={editId ? "✏️ Editar transferencia" : "🏦 Registrar transferencia"} onClose={() => { setShowTrans(false); setEditId(null); }} w={520}>
-              {/* Tipo */}
-              <Fld label="Tipo de pago">
-                <div style={{ display: "flex", gap: 3 }}>
-                  <button onClick={() => setTForm({ ...tForm, tipo: "flete", cuenta: "" })} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: tForm.tipo === "flete" ? "2px solid #2563EB" : "1px solid #D1D5DB", background: tForm.tipo === "flete" ? "#EFF6FF" : "#fff", color: tForm.tipo === "flete" ? "#2563EB" : "#6B7280", fontWeight: tForm.tipo === "flete" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>🚛 Flete</button>
-                  <button onClick={() => setTForm({ ...tForm, tipo: "fantasma", cuenta: "" })} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: tForm.tipo === "fantasma" ? "2px solid #DC2626" : "1px solid #D1D5DB", background: tForm.tipo === "fantasma" ? "#FEF2F2" : "#fff", color: tForm.tipo === "fantasma" ? "#DC2626" : "#6B7280", fontWeight: tForm.tipo === "fantasma" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>👻 Fantasma</button>
-                </div>
-              </Fld>
-
-              {/* Pedido */}
-              <Fld label="Pedido">
-                <div style={{ position: "relative", marginBottom: 4 }}>
-                  <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
-                  <input value={tForm.pedSearch} onChange={e => setTForm({ ...tForm, pedSearch: e.target.value })} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
-                </div>
-              </Fld>
-              <div style={{ maxHeight: 130, overflow: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8 }}>
-                {(() => {
-                  const isFlete = tForm.tipo === "flete";
-                  let peds = data.fantasmas.filter(f => {
-                    if (f.estado === "CERRADO") return false;
-                    // Exclude if already paid for this type
-                    if (isFlete && f.fletePagado) return false;
-                    if (!isFlete && f.clientePago) return false;
-                    // Exclude if already has a pending transfer for this type
-                    const yaTransferido = (data.transferencias || []).some(t =>
-                      t.pedidoId === f.id && t.tipo === tForm.tipo && !t.confirmada && !t.noRecibida && t.id !== editId
-                    );
-                    if (yaTransferido) return false;
-                    return true;
-                  });
-                  if (tForm.pedSearch) { const s = tForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); }
-                  if (peds.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes de {isFlete ? "flete" : "fantasma"}</div>;
-                  return peds.slice(0, 15).map(f => {
-                    const sel = tForm.pedidoId === f.id;
-                    const monto = tForm.tipo === "flete" ? (f.costoFlete || 0) : f.costoMercancia;
-                    return (
-                      <div key={f.id} onClick={() => setTForm({ ...tForm, pedidoId: f.id, pedSearch: "" })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#F5F3FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #7C3AED" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "#fff"; }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, color: "#9CA3AF" }}>{f.id}</span>
-                          <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
-                          {sel && <span style={{ fontSize: 8, background: "#7C3AED", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
-                          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: tForm.tipo === "flete" ? "#2563EB" : "#DC2626" }}>{fmt(monto)}</span>
-                        </div>
-                        <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-
-              {/* Cuenta bancaria */}
-              <Fld label="Cuenta de depósito *">
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {CUENTAS.filter(c => c.uso === tForm.tipo).length > 0 ? CUENTAS.filter(c => c.uso === tForm.tipo).map(c => {
-                    const sel = tForm.cuenta === c.id;
-                    return (
-                      <div key={c.id} onClick={() => setTForm({ ...tForm, cuenta: c.id })} style={{ padding: "8px 12px", borderRadius: 8, border: sel ? `2px solid ${c.color}` : "1px solid #E5E7EB", background: sel ? (c.uso === "flete" ? "#FEF2F2" : "#EFF6FF") : "#fff", cursor: "pointer" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: c.color }}>{c.banco}</span>
-                          <span style={{ fontSize: 8, background: c.uso === "flete" ? "#FEE2E2" : "#DBEAFE", color: c.uso === "flete" ? "#991B1B" : "#1E40AF", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>{c.tag}</span>
-                          {sel && <span style={{ fontSize: 8, background: c.color, color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#374151", fontWeight: 600 }}>{c.titular}</div>
-                        <div style={{ fontSize: 9, color: "#9CA3AF" }}>Tarjeta: {c.tarjeta} · CLABE: {c.clabe}</div>
-                      </div>
-                    );
-                  }) : (
-                    <div style={{ padding: 12, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay cuentas para este tipo.</div>
-                  )}
-                  {CUENTAS.filter(c => c.uso !== tForm.tipo).length > 0 && (
-                    <details style={{ marginTop: 4 }}>
-                      <summary style={{ cursor: "pointer", fontSize: 10, color: "#9CA3AF" }}>Ver otras cuentas ({CUENTAS.filter(c => c.uso !== tForm.tipo)[0].tag})</summary>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                        {CUENTAS.filter(c => c.uso !== tForm.tipo).map(c => {
-                          const sel = tForm.cuenta === c.id;
-                          return (
-                            <div key={c.id} onClick={() => setTForm({ ...tForm, cuenta: c.id })} style={{ padding: "8px 12px", borderRadius: 8, border: sel ? `2px solid ${c.color}` : "1px solid #E5E7EB", background: sel ? "#FAFBFC" : "#fff", cursor: "pointer", opacity: 0.7 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 10, fontWeight: 700, color: c.color }}>{c.banco}</span>
-                                <span style={{ fontSize: 8, background: c.uso === "flete" ? "#FEE2E2" : "#DBEAFE", color: c.uso === "flete" ? "#991B1B" : "#1E40AF", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>{c.tag}</span>
-                                {sel && <span style={{ fontSize: 8, background: c.color, color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
-                              </div>
-                              <div style={{ fontSize: 10, color: "#374151", fontWeight: 600 }}>{c.titular}</div>
-                              <div style={{ fontSize: 9, color: "#9CA3AF" }}>Tarjeta: {c.tarjeta} · CLABE: {c.clabe}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              </Fld>
-
-              {/* Moneda y monto */}
-              <Fld label="Moneda">
-                <div style={{ display: "flex", gap: 3 }}>
-                  <button onClick={() => setTForm({ ...tForm, moneda: "MXN", montoUSD: "" })} style={{ flex: 1, padding: "6px 12px", borderRadius: 6, border: tForm.moneda === "MXN" ? "2px solid #D97706" : "1px solid #D1D5DB", background: tForm.moneda === "MXN" ? "#FEF3C7" : "#fff", color: tForm.moneda === "MXN" ? "#92400E" : "#6B7280", fontWeight: tForm.moneda === "MXN" ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🇲🇽 MXN (pesos)</button>
-                  <button onClick={() => setTForm({ ...tForm, moneda: "USD", montoMXN: "", tipoCambio: "" })} style={{ flex: 1, padding: "6px 12px", borderRadius: 6, border: tForm.moneda === "USD" ? "2px solid #059669" : "1px solid #D1D5DB", background: tForm.moneda === "USD" ? "#ECFDF5" : "#fff", color: tForm.moneda === "USD" ? "#065F46" : "#6B7280", fontWeight: tForm.moneda === "USD" ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🇺🇸 USD</button>
-                </div>
-              </Fld>
-              {tForm.moneda === "MXN" ? (
-                <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Fld label="Monto MXN *"><Inp type="number" value={tForm.montoMXN} onChange={e => setTForm({ ...tForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
-                    <Fld label="Tipo de cambio *"><Inp type="number" value={tForm.tipoCambio} onChange={e => setTForm({ ...tForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
-                  </div>
-                  {tForm.montoMXN && tForm.tipoCambio && parseFloat(tForm.tipoCambio) > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: "#065F46", marginTop: 4 }}>= {fmt(parseFloat(tForm.montoMXN) / parseFloat(tForm.tipoCambio))} USD</div>}
-                </div>
-              ) : (
-                <Fld label="Monto USD *"><Inp type="number" value={tForm.montoUSD} onChange={e => setTForm({ ...tForm, montoUSD: e.target.value })} placeholder="0.00" /></Fld>
-              )}
-              <div style={{ display: "flex", gap: 8 }}>
-                <Fld label="Fecha"><Inp type="date" value={tForm.fecha} onChange={e => setTForm({ ...tForm, fecha: e.target.value })} /></Fld>
-                <Fld label="Nota"><Inp value={tForm.nota} onChange={e => setTForm({ ...tForm, nota: e.target.value })} placeholder="Referencia, concepto..." /></Fld>
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
-                <Btn v="secondary" onClick={() => { setShowTrans(false) }}>Cancelar</Btn>
-                <Btn disabled={!tForm.pedidoId || !tForm.cuenta || (tForm.moneda === "MXN" ? (!tForm.montoMXN || !tForm.tipoCambio) : !tForm.montoUSD)} onClick={registrarTrans} style={{ background: "#7C3AED" }}>{editId ? "✏️ Guardar cambios" : "🏦 Registrar transferencia"}</Btn>
-              </div>
-            </Modal>
-          )}
-        </div>
-      );
-    };
 
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
@@ -4982,7 +4987,7 @@ export default function App() {
         {tab === "recibir" && <RecibirTJ />}
         {tab === "entregados" && <EntregadosTJ />}
         {tab === "efectivo" && <FlujoEfectivo />}
-        {tab === "transferencias" && <TransferenciasTJ />}
+        {tab === "transferencias" && <TransferenciasTJ showTransApp={showTransApp} setShowTransApp={setShowTransApp} tFormTipo={tFormTipo} setTFormTipo={setTFormTipo} data={data} updF={updF} persist={persist} role={role} today={today} fmt={fmt} fmtD={fmtD} Modal={Modal} Btn={Btn} Fld={Fld} Inp={Inp} I={I} filterByDate={filterByDate} showConfirm={showConfirm} navigate={navigate} />}
       </div>
     );
   };
