@@ -4759,13 +4759,16 @@ export default function App() {
     };
 
     const registrar = () => {
-      const monto = parseFloat(movForm.monto) || 0;
-      if (!movForm.concepto || monto <= 0) return;
+      const montoUSD = parseFloat(movForm.montoUSD) || 0;
+      const montoMXN = parseFloat(movForm.montoMXN) || 0;
+      if (!movForm.concepto || (montoUSD <= 0 && montoMXN <= 0)) return;
+
       // Transfer to fondo
       if (movForm.tipo === "a_fondo" && movForm.fondoKey) {
-        const g = { id: Date.now(), concepto: `A FONDO: ${movForm.concepto.toUpperCase()}`, monto, moneda: movForm.moneda || "USD", montoUSD: (movForm.moneda || "USD") === "USD" ? monto : 0, montoMXN: (movForm.moneda || "USD") === "MXN" ? monto : 0, destino: "FONDO", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "egreso" };
+        const monto = montoUSD > 0 ? montoUSD : montoMXN;
+        const moneda = montoUSD > 0 ? "USD" : "MXN";
+        const g = { id: Date.now(), concepto: `A FONDO: ${movForm.concepto.toUpperCase()}`, monto, moneda, montoUSD, montoMXN, destino: "FONDO", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "egreso" };
         const nd = { ...data, gastosAdmin: [...(data.gastosAdmin || []), g] };
-        // Add to fondo
         nd.fondos = { ...(nd.fondos || {}), [movForm.fondoKey]: ((nd.fondos || {})[movForm.fondoKey] || 0) + monto };
         const fm = { ...(nd.fondosMovs || {}) };
         if (!fm[movForm.fondoKey]) fm[movForm.fondoKey] = [];
@@ -4775,24 +4778,52 @@ export default function App() {
         setShowMov(false);
         return;
       }
+
       const isEnvio = movForm.tipo === "envio";
       const isRecibir = movForm.tipo === "recibir";
-      const moneda = movForm.moneda || "USD";
       let tipoMov = movForm.tipo;
       if (isEnvio) tipoMov = "egreso";
       if (isRecibir) tipoMov = "ingreso";
-      const g = { id: Date.now(), concepto: movForm.concepto.toUpperCase(), monto, moneda, montoUSD: moneda === "USD" ? monto : 0, montoMXN: moneda === "MXN" ? monto : 0, destino: isEnvio ? movForm.destino : "ADMIN", origen: isRecibir ? movForm.destino : null, fecha: movForm.fecha, nota: movForm.nota, tipoMov };
-      let nd = { ...data, gastosAdmin: [...(data.gastosAdmin || []), g] };
-      if (isEnvio) {
-        const ingBodega = { id: Date.now() + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto, moneda, montoOriginal: moneda === "MXN" ? monto : null, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
-        if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
-        else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
+
+      let nd = { ...data };
+      const baseId = Date.now();
+
+      // Save USD movement if filled
+      if (montoUSD > 0) {
+        const g = { id: baseId, concepto: movForm.concepto.toUpperCase(), monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, destino: isEnvio ? movForm.destino : "ADMIN", origen: isRecibir ? movForm.destino : null, fecha: movForm.fecha, nota: movForm.nota, tipoMov };
+        nd.gastosAdmin = [...(nd.gastosAdmin || []), g];
+        if (isEnvio) {
+          const ingBodega = { id: baseId + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
+          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
+          else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
+        }
+        if (isRecibir) {
+          const egrBodega = { id: baseId + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD, moneda: "USD", montoUSD, montoMXN: 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
+          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
+          else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
+        }
       }
+
+      // Save MXN movement if filled
+      if (montoMXN > 0) {
+        const g = { id: baseId + 10, concepto: movForm.concepto.toUpperCase(), monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, destino: isEnvio ? movForm.destino : "ADMIN", origen: isRecibir ? movForm.destino : null, fecha: movForm.fecha, nota: movForm.nota, tipoMov };
+        nd.gastosAdmin = [...(nd.gastosAdmin || []), g];
+        if (isEnvio) {
+          const ingBodega = { id: baseId + 11, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, montoOriginal: montoMXN, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
+          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
+          else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
+        }
+        if (isRecibir) {
+          const egrBodega = { id: baseId + 12, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoMXN, moneda: "MXN", montoUSD: 0, montoMXN, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
+          if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
+          else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
+        }
+      }
+
       if (isRecibir) {
-        const egrBodega = { id: Date.now() + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto, moneda, montoUSD: moneda === "USD" ? monto : 0, montoMXN: moneda === "MXN" ? monto : 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
-        if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
-        else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
         const pedRec = movForm.pedidosRec || {};
+        const monto = montoUSD > 0 ? montoUSD : montoMXN;
+        const moneda = montoUSD > 0 ? "USD" : "MXN";
         Object.keys(pedRec).filter(k => pedRec[k]).forEach(fId => {
           const tipo = pedRec[fId];
           nd.fantasmas = nd.fantasmas.map(f => f.id !== fId ? f : { ...f, [tipo === "flete" ? "fleteEntregadoAdmin" : "fantasmaEntregadoAdmin"]: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `📥 ${tipo === "flete" ? "Flete" : "Fantasma"} entregado a Admin (${moneda === "MXN" ? fmtMXN(monto) + " MXN" : fmt(monto) + " USD"})`, quien: role }] });
@@ -4876,30 +4907,66 @@ export default function App() {
           </div>
         </div>
         {sortedMovs.length === 0 && (prevAdm.usd === 0 && prevAdm.mxn === 0) ? <p style={{ color: "#9CA3AF", fontSize: 11, textAlign: "center", padding: 30 }}>Sin movimientos.</p> : (
-          <div style={{ maxHeight: 400, overflow: "auto" }}>
-            {sortedMovs.map(m => {
-              const isIng = m.tipoMov === "ingreso";
-              const dest = DESTINOS.find(d => d.k === m.destino);
-              return (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB", borderLeft: `3px solid ${isIng ? "#059669" : "#DC2626"}`, marginBottom: 4, fontSize: 11 }}>
-                  <span style={{ color: "#9CA3AF", fontSize: 9, minWidth: 50 }}>{fmtD(m.fecha)}</span>
-                  <span style={{ fontSize: 9, background: isIng ? (m.origen ? "#F5F3FF" : "#D1FAE5") : m.destino !== "ADMIN" ? "#DBEAFE" : "#FEE2E2", color: isIng ? (m.origen ? "#7C3AED" : "#065F46") : m.destino !== "ADMIN" ? "#1E40AF" : "#991B1B", padding: "1px 6px", borderRadius: 3, fontWeight: 600 }}>{isIng ? (m.origen ? `← ${m.origen === "BODEGA_USA" ? "🇺🇸 Bodega USA" : "🇲🇽 Bodega TJ"}` : "INGRESO") : m.destino !== "ADMIN" ? `→ ${dest?.l || m.destino}` : "GASTO"}</span>
-                  <strong style={{ flex: 1 }}>{m.concepto}</strong>
-                  {m.nota && <span style={{ color: "#9CA3AF", fontSize: 10 }}>{m.nota}</span>}
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }}>{isIng ? "+" : "-"}{m.moneda === "MXN" ? fmtMXN(m.monto) : fmt(m.monto)}</span>
-                  {m.moneda === "MXN" && <span style={{ fontSize: 8, background: "#FEF3C7", color: "#92400E", padding: "1px 4px", borderRadius: 3, fontWeight: 600 }}>MXN</span>}
-                  <button onClick={() => eliminarMov(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
+          <div style={{ overflowX: "auto" }}>
+            {/* Excel-style table header */}
+            <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, background: "#1A2744", color: "#fff", borderRadius: "8px 8px 0 0", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <div>Fecha</div>
+              <div>Tipo</div>
+              <div>Concepto</div>
+              <div style={{ textAlign: "right", color: "#86EFAC" }}>+ Entrada USD</div>
+              <div style={{ textAlign: "right", color: "#FCA5A5" }}>- Salida USD</div>
+              <div style={{ textAlign: "right", color: "#FDE68A" }}>+ Entrada MXN</div>
+              <div style={{ textAlign: "right", color: "#FCA5A5" }}>- Salida MXN</div>
+              <div></div>
+            </div>
+            <div style={{ border: "1px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
+              {/* Saldo anterior row */}
+              {periodoTipo !== "global" && (prevAdm.usd !== 0 || prevAdm.mxn !== 0) && (
+                <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "6px 10px", background: "#F9FAFB", borderBottom: "2px dashed #D1D5DB", fontSize: 11 }}>
+                  <div style={{ color: "#9CA3AF", fontSize: 9 }}>—</div>
+                  <div style={{ fontSize: 9, color: "#6B7280", fontWeight: 600 }}>ANTERIOR</div>
+                  <div style={{ color: "#6B7280", fontWeight: 600 }}>Saldo anterior al período</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: prevAdm.usd >= 0 ? "#059669" : "#DC2626" }}>{prevAdm.usd !== 0 ? fmt(prevAdm.usd) : ""}</div>
+                  <div></div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: prevAdm.mxn >= 0 ? "#D97706" : "#DC2626" }}>{prevAdm.mxn !== 0 ? fmtMXN(prevAdm.mxn) : ""}</div>
+                  <div></div>
+                  <div></div>
                 </div>
-              );
-            })}
-            {periodoTipo !== "global" && (prevAdm.usd !== 0 || prevAdm.mxn !== 0) && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#F9FAFB", borderRadius: 6, border: "2px dashed #D1D5DB", marginBottom: 4, fontSize: 11 }}>
-                <span style={{ fontSize: 14 }}>📋</span>
-                <strong style={{ flex: 1, color: "#6B7280" }}>Saldo anterior</strong>
-                {prevAdm.usd !== 0 && <span style={{ fontFamily: "monospace", fontWeight: 700, color: prevAdm.usd >= 0 ? "#059669" : "#DC2626" }}>{fmt(prevAdm.usd)}</span>}
-                {prevAdm.mxn !== 0 && <span style={{ fontFamily: "monospace", fontWeight: 700, color: prevAdm.mxn >= 0 ? "#D97706" : "#DC2626" }}>${(prevAdm.mxn).toLocaleString("en-US", {minimumFractionDigits:2})} MXN</span>}
+              )}
+              {sortedMovs.map((m, idx) => {
+                const isIng = m.tipoMov === "ingreso";
+                const isMXN = m.moneda === "MXN";
+                const dest = DESTINOS.find(d => d.k === m.destino);
+                const tipoLabel = isIng ? (m.origen ? `← ${m.origen === "BODEGA_USA" ? "USA" : "TJ"}` : "INGRESO") : m.destino !== "ADMIN" ? `→ ${dest?.l?.replace(/[🇺🇸🇲🇽💼]/g,"").trim() || m.destino}` : "GASTO";
+                const tipoColor = isIng ? "#059669" : "#DC2626";
+                return (
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "7px 10px", background: idx % 2 === 0 ? "#fff" : "#FAFAFA", borderBottom: "1px solid #F3F4F6", fontSize: 11, alignItems: "center" }}>
+                    <div style={{ color: "#9CA3AF", fontSize: 9 }}>{fmtD(m.fecha)}</div>
+                    <div style={{ fontSize: 9, background: isIng ? "#D1FAE5" : "#FEE2E2", color: tipoColor, padding: "1px 5px", borderRadius: 3, fontWeight: 700, display: "inline-block" }}>{tipoLabel}</div>
+                    <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}{m.nota && <span style={{ color: "#9CA3AF", fontWeight: 400 }}> · {m.nota}</span>}</div>
+                    {/* USD entrada */}
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>{isIng && !isMXN ? fmt(m.monto) : ""}</div>
+                    {/* USD salida */}
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{!isIng && !isMXN ? fmt(m.monto) : ""}</div>
+                    {/* MXN entrada */}
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#D97706" }}>{isIng && isMXN ? fmtMXN(m.monto) : ""}</div>
+                    {/* MXN salida */}
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>{!isIng && isMXN ? fmtMXN(m.monto) : ""}</div>
+                    <div><button onClick={() => eliminarMov(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></div>
+                  </div>
+                );
+              })}
+              {/* Totals row */}
+              <div style={{ display: "grid", gridTemplateColumns: "70px 80px 1fr 90px 90px 90px 90px 28px", gap: 0, padding: "8px 10px", background: "#1A2744", color: "#fff", borderRadius: "0 0 8px 8px", fontSize: 11, fontWeight: 700 }}>
+                <div></div><div></div>
+                <div style={{ fontSize: 10, color: "#94A3B8" }}>SALDO PERÍODO</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#86EFAC" }}>{fmt(ingUSD)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FCA5A5" }}>{fmt(egrUSD)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FDE68A" }}>{fmtMXN(ingMXN)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: "#FCA5A5" }}>{fmtMXN(egrMXN)}</div>
+                <div></div>
               </div>
-            )}
+            </div>
           </div>
         )}
         {showMov && (
@@ -4976,16 +5043,35 @@ export default function App() {
               </Fld>
             )}
             <Fld label="Concepto *"><Inp value={movForm.concepto} onChange={e => setMovForm({ ...movForm, concepto: e.target.value.toUpperCase() })} placeholder={movForm.tipo === "envio" ? "SOBRE, FONDO SEMANAL..." : "DESCRIPCIÓN..."} style={{ textTransform: "uppercase" }} /></Fld>
-            <Fld label="Moneda">
-              <div style={{ display: "flex", gap: 3 }}>
-                <button onClick={() => setMovForm({ ...movForm, moneda: "USD" })} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: movForm.moneda === "USD" ? "2px solid #059669" : "1px solid #D1D5DB", background: movForm.moneda === "USD" ? "#ECFDF5" : "#fff", color: movForm.moneda === "USD" ? "#065F46" : "#6B7280", fontWeight: movForm.moneda === "USD" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>🇺🇸 USD</button>
-                <button onClick={() => setMovForm({ ...movForm, moneda: "MXN" })} style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: movForm.moneda === "MXN" ? "2px solid #D97706" : "1px solid #D1D5DB", background: movForm.moneda === "MXN" ? "#FEF3C7" : "#fff", color: movForm.moneda === "MXN" ? "#92400E" : "#6B7280", fontWeight: movForm.moneda === "MXN" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>🇲🇽 MXN</button>
-              </div>
-            </Fld>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Fld label={`Monto ${movForm.moneda === "MXN" ? "MXN" : "USD"} *`}><Inp type="number" value={movForm.monto} onChange={e => setMovForm({ ...movForm, monto: e.target.value })} placeholder="0.00" /></Fld>
+            {/* Monto USD y MXN al mismo tiempo */}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Fld label="🇺🇸 Monto USD">
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#059669", fontWeight: 700, fontSize: 13 }}>$</span>
+                  <Inp type="number" value={movForm.montoUSD || ""} onChange={e => setMovForm({ ...movForm, montoUSD: e.target.value, monto: e.target.value, moneda: "USD" })} placeholder="0.00" style={{ paddingLeft: 24 }} />
+                </div>
+              </Fld>
+              <Fld label="🇲🇽 Monto MXN">
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#D97706", fontWeight: 700, fontSize: 13 }}>$</span>
+                  <Inp type="number" value={movForm.montoMXN || ""} onChange={e => setMovForm({ ...movForm, montoMXN: e.target.value, monto: movForm.montoUSD ? movForm.montoUSD : e.target.value, moneda: movForm.montoUSD ? "USD" : "MXN" })} placeholder="0.00" style={{ paddingLeft: 24 }} />
+                </div>
+              </Fld>
               <Fld label="Fecha"><Inp type="date" value={movForm.fecha} onChange={e => setMovForm({ ...movForm, fecha: e.target.value })} /></Fld>
             </div>
+            {/* Preview */}
+            {((parseFloat(movForm.montoUSD) > 0) || (parseFloat(movForm.montoMXN) > 0)) && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                {parseFloat(movForm.montoUSD) > 0 && <div style={{ flex: 1, background: "#ECFDF5", borderRadius: 8, padding: "8px 12px", border: "1px solid #A7F3D0", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: "#6B7280", fontWeight: 600 }}>USD</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(parseFloat(movForm.montoUSD))}</div>
+                </div>}
+                {parseFloat(movForm.montoMXN) > 0 && <div style={{ flex: 1, background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: "#6B7280", fontWeight: 600 }}>MXN</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#D97706" }}>${parseFloat(movForm.montoMXN).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                </div>}
+              </div>
+            )}
             <Fld label="Nota"><Inp value={movForm.nota} onChange={e => setMovForm({ ...movForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
               <Btn v="secondary" onClick={() => setShowMov(false)}>Cancelar</Btn>
