@@ -1070,10 +1070,11 @@ export default function App() {
       // Sync dineroStatus
       d.fantasmas = d.fantasmas.map(f => {
         const mercPagado = f.clientePago;
-        const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
-        if (mercPagado && fletePagado && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
-        if (mercPagado && !fletePagado && !["TODO_PAGADO","FANTASMA_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
-        if (!mercPagado && fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
+        const fleteAplica = f.costoFlete > 0 || f.fleteDesconocido;
+        const fleteOk = f.fletePagado || f.soloRecoger || !fleteAplica;
+        if (mercPagado && fleteOk && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
+        if (mercPagado && !fleteOk && !["TODO_PAGADO","FANTASMA_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
+        if (!mercPagado && f.fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
         return f;
       });
       if ((d.nextId || 0) < 2800) d.nextId = 2800;
@@ -1242,8 +1243,9 @@ export default function App() {
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
     const mercPagado = f.clientePago;
-    const fletePagado = f.fletePagado || (!f.costoFlete && !f.fleteDesconocido);
-    if (mercPagado && fletePagado) return "TODO_PAGADO";
+    const fleteAplica = f.costoFlete > 0 || f.fleteDesconocido;
+    const fleteOk = f.fletePagado || f.soloRecoger || !fleteAplica;
+    if (mercPagado && fleteOk) return "TODO_PAGADO";
     if (mercPagado) return "FANTASMA_PAGADO";
     if (fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
     return null; // don't override
@@ -1305,7 +1307,7 @@ export default function App() {
     if (fEst !== "ALL") list = list.filter(f => f.estado === fEst);
     if (fPagoMerc === "pagado") list = list.filter(f => f.clientePago);
     if (fPagoMerc === "pendiente") list = list.filter(f => !f.clientePago);
-    if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
+    if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado);
     if (fPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && f.costoFlete > 0);
     return list;
   }, [roleFantasmas, search, fEst, fPagoMerc, fPagoFlete]);
@@ -2068,7 +2070,7 @@ export default function App() {
     if (bEstado !== "ALL") list = list.filter(f => f.estado === bEstado);
     if (bPagoMerc === "pagado") list = list.filter(f => f.clientePago);
     if (bPagoMerc === "pendiente") list = list.filter(f => !f.clientePago);
-    if (bPagoFlete === "pagado") list = list.filter(f => f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
+    if (bPagoFlete === "pagado") list = list.filter(f => f.fletePagado);
     if (bPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido));
     if (bSearch) { const s = bSearch.toLowerCase().trim(); const sNum = s.replace(/[^0-9]/g, ""); list = list.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor||"").toLowerCase().includes(s) || (f.vendedor||"").toLowerCase().includes(s) || (f.tipoMercancia||"").toLowerCase().includes(s)); }
 
@@ -3105,6 +3107,7 @@ export default function App() {
     const [vSearch, setVSearch] = useState("");
     const [vFiltro, setVFiltro] = useState("ALL");
     const [showSobreModal, setShowSobreModal] = useState(false);
+    const [ventasTab, setVentasTab] = useState("fantasmas"); // "fantasmas" | "fletes"
 
     let pedidosNuevos = data.fantasmas.filter(f => f.estado === "PEDIDO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaCreacion) - new Date(a.fechaCreacion));
 
@@ -3142,7 +3145,7 @@ export default function App() {
     ];
 
     const pendientesMerc = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.clientePago);
-    const pendientesFlete = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.clientePago && !f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido));
+    const pendientesFlete = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.clientePago && !f.fletePagado && !f.soloRecoger && (f.costoFlete > 0 || f.fleteDesconocido));
     const totalPorCobrarMerc = pendientesMerc.reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
     const totalPorCobrarFlete = pendientesFlete.reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
     const selCount = Object.keys(selPedidos).filter(k => selPedidos[k]).length;
@@ -3230,24 +3233,35 @@ export default function App() {
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 Pedidos</h2>
           <Btn onClick={() => { setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
-          <Stat label="Merc. por recibir" value={fmt(totalPorCobrarMerc)} color="#DC2626" icon={<I.Dollar />} sub={`${pendientesMerc.length} pedidos`} />
-          <Stat label="Flete por recibir" value={fmt(totalPorCobrarFlete)} color="#2563EB" icon={<I.Truck />} sub={`${pendientesFlete.length} pedidos`} />
+
+        {/* Main tabs: Fantasmas vs Fletes */}
+        <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 14 }}>
+          <button onClick={() => { setVentasTab("fantasmas"); setVFiltro("ALL"); }} style={{ flex: 1, padding: "9px", borderRadius: 6, border: "none", background: ventasTab === "fantasmas" ? "#fff" : "transparent", boxShadow: ventasTab === "fantasmas" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: ventasTab === "fantasmas" ? 700 : 500, fontFamily: "inherit", color: ventasTab === "fantasmas" ? "#DC2626" : "#6B7280" }}>👻 Fantasmas</button>
+          <button onClick={() => { setVentasTab("fletes"); setVFiltro("ALL"); }} style={{ flex: 1, padding: "9px", borderRadius: 6, border: "none", background: ventasTab === "fletes" ? "#fff" : "transparent", boxShadow: ventasTab === "fletes" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: ventasTab === "fletes" ? 700 : 500, fontFamily: "inherit", color: ventasTab === "fletes" ? "#2563EB" : "#6B7280" }}>🚛 Fletes</button>
         </div>
 
-        {/* Search */}
+        {/* Stats según tab */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
+          {ventasTab === "fantasmas" && <Stat label="Merc. por recibir" value={fmt(totalPorCobrarMerc)} color="#DC2626" icon={<I.Dollar />} sub={`${pendientesMerc.length} pedidos`} />}
+          {ventasTab === "fletes" && <Stat label="Flete por recibir" value={fmt(totalPorCobrarFlete)} color="#2563EB" icon={<I.Truck />} sub={`${pendientesFlete.length} pedidos`} />}
+        </div>
+
+        {/* Search and status tabs — solo en fantasmas */}
+        {ventasTab === "fantasmas" && <>
         <div style={{ position: "relative", marginBottom: 8 }}>
           <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
           <input value={vSearch} onChange={e => setVSearch(e.target.value)} placeholder="Buscar folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
         </div>
-        {/* Status tabs */}
         <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 12 }}>
           {[["ALL","📋 Todos",null,"#1A2744"],["sin_sobre","💵 Pendientes",sinSobre.length,"#DC2626"],["sobre_listo","📋 Sobre listo",sobreListo.length,"#2563EB"],["sobre_enviado","📨 Enviados",sobreEnviado.length,"#7C3AED"],["con_dinero","✅ En USA",conDineroV.length,"#059669"]].map(([k,l,n,c]) => (
             <button key={k} onClick={() => setVFiltro(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 6, border: "none", background: vFiltro === k ? "#fff" : "transparent", boxShadow: vFiltro === k ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: vFiltro === k ? 700 : 500, fontFamily: "inherit", color: vFiltro === k ? c : "#9CA3AF" }}>{l}{n != null ? ` (${n})` : ""}</button>
           ))}
         </div>
+        </>}
 
+        {/* Fantasmas tab content */}
+        {ventasTab === "fantasmas" && <>
         {/* Groups */}
         {grupos.map(g => g.items.length > 0 && (
           <div key={g.key} style={{ marginBottom: 14 }}>
@@ -3271,7 +3285,37 @@ export default function App() {
             })}
           </div>
         )}
-        {pedidosNuevos.length === 0 && pendientesPago.length === 0 && <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📋</div><p style={{ fontSize: 12 }}>No hay pedidos nuevos ni pendientes de pago.</p></div>}
+        {pedidosNuevos.length === 0 && pendientesMerc.length === 0 && <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📋</div><p style={{ fontSize: 12 }}>No hay pedidos nuevos ni mercancía pendiente.</p></div>}
+        </>}
+
+        {/* Fletes tab content */}
+        {ventasTab === "fletes" && (() => {
+          const conFletesPendientes = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.soloRecoger && !f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+          const conFletesPagados = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.fletePagado).sort((a, b) => new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
+          const mkRow = (f) => {
+            const df = (f.costoFlete || 0) - (f.abonoFlete || 0);
+            return <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>{f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>🔥</span>}<strong style={{ fontSize: 12 }}>{f.cliente}</strong><Badge estado={f.estado} />{f.fleteDesconocido && <span style={{ fontSize: 9, background: "#D97706", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>❓ Desc.</span>}</div><div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion} · {f.proveedor || "—"}</div></div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                {f.fleteDesconocido ? <span style={{ color: "#D97706", fontWeight: 700, fontSize: 13 }}>❓</span> : <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 13, color: f.fletePagado ? "#059669" : "#2563EB" }}>{fmt(f.costoFlete)}</span>}
+                {!f.fletePagado && df > 0 && <div style={{ fontSize: 10, color: "#DC2626" }}>Debe: {fmt(df)}</div>}
+                {f.fletePagado && <div style={{ fontSize: 10, color: "#059669" }}>✓ Pagado</div>}
+              </div>
+              <I.Right />
+            </div>;
+          };
+          return <div>
+            {conFletesPendientes.length > 0 && <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#2563EB", marginBottom: 8 }}>🚛 Flete pendiente ({conFletesPendientes.length})</div>
+              {conFletesPendientes.map(mkRow)}
+            </div>}
+            {conFletesPagados.length > 0 && <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#059669", marginBottom: 8 }}>✅ Fletes pagados ({conFletesPagados.length})</div>
+              {conFletesPagados.slice(0, 20).map(mkRow)}
+            </div>}
+            {conFletesPendientes.length === 0 && conFletesPagados.length === 0 && <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>🚛</div><p style={{ fontSize: 12 }}>No hay fletes registrados.</p></div>}
+          </div>;
+        })()}
 
         {selCount > 0 && <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)" }}><span style={{ fontSize: 13, fontWeight: 600 }}>{selCount} seleccionado{selCount > 1 ? "s" : ""}</span><div style={{ display: "flex", gap: 6 }}><Btn v="secondary" sz="sm" onClick={() => setSelPedidos({})}>Deseleccionar</Btn><Btn onClick={() => setShowSobreModal(true)} style={{ background: "#2563EB" }}>📨 Sobre enviado a USA</Btn></div></div>}
 
@@ -3535,7 +3579,7 @@ export default function App() {
   const BodegaUSA = () => {
     const tab = usaTab; const setTab = setUsaTab;
     const [selSobres, setSelSobres] = useState({});
-    const [usaPendTab, setUsaPendTab] = useState("pendientes");
+    const [usaPendTab, setUsaPendTab] = useState("camino");
 
     // CLEAN FILTERS: each pedido in exactly ONE tab
     // Pendientes: estado PEDIDO, sin dinero en USA (no confirmado)
