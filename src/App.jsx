@@ -645,6 +645,7 @@ export default function App() {
   const [selId, setSelId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
+  const [showTransApp, setShowTransApp] = useState(false);
   const [search, setSearch] = useState("");
   const [fEst, setFEst] = useState("ALL");
 
@@ -745,8 +746,8 @@ export default function App() {
 
   // Cuando showNew está abierto, pausar los listeners para no interrumpir
   useEffect(() => {
-    formOpenRef.current = showNew || showColchon;
-  }, [showNew, showColchon]);
+    formOpenRef.current = showNew || showColchon || showTransApp;
+  }, [showNew, showColchon, showTransApp]);
 
   // ── Presence system ─────────────────────────────────────────────
   useEffect(() => {
@@ -2852,7 +2853,7 @@ export default function App() {
     }
 
     // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
-    const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && (t.confirmada || !t.noRecibida));
+    const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && t.confirmada === true);
     const sinSobre = pedidosNuevos.filter(f => (!f.dineroStatus || f.dineroStatus === "SIN_FONDOS") && f.dineroStatus !== "TRANS_PENDIENTE");
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
     const sobreEnviado = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_CAMINO");
@@ -2865,7 +2866,7 @@ export default function App() {
       { key: "sin_sobre", label: "💵 Sin sobre", items: sinSobre, color: "#DC2626", showSelect: true },
       { key: "trans_pendiente", label: "🏦 Transferencia pendiente", items: transPendientes, color: "#7C3AED", showSelect: false },
       { key: "sobre_listo", label: "📋 Sobre listo", items: sobreListo, color: "#2563EB", showSelect: true },
-      { key: "pagado_cliente", label: "💰 Pagado por cliente", items: pagadoCliente.filter(f => !pagoConTransferencia(f)), color: "#EC4899", showSelect: true },
+      { key: "pagado_cliente", label: "💰 Pagado por cliente", items: pagadoCliente, color: "#EC4899", showSelect: false },
       { key: "sobre_enviado", label: "📨 Sobre enviado a USA", items: sobreEnviado, color: "#7C3AED", showSelect: false },
       { key: "con_dinero", label: "✅ Dinero en USA", items: conDineroV, color: "#059669", showSelect: false },
     ] : vFiltro === "sobre_listo" ? [
@@ -4150,7 +4151,7 @@ export default function App() {
     // TransferenciasTJ
     const TransferenciasTJ = () => {
       const [tjTransSearch, setTjTransSearch] = useState("");
-      const [showTrans, setShowTrans] = useState(false);
+      const showTrans = showTransApp; const setShowTrans = setShowTransApp;
       const [editId, setEditId] = useState(null);
       const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
 
