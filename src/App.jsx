@@ -1815,9 +1815,15 @@ export default function App() {
 
     const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
 
+    const clickTimer = useRef(null);
     const startEdit = (e, f, field) => {
       e.stopPropagation();
+      if (clickTimer.current) clearTimeout(clickTimer.current);
       setEditCell({ id: f.id, field, val: String(f[field] ?? "") });
+    };
+    const goDelayed = (fn) => {
+      if (clickTimer.current) clearTimeout(clickTimer.current);
+      clickTimer.current = setTimeout(fn, 220);
     };
     const saveEdit = () => {
       if (!editCell) return;
@@ -1835,16 +1841,22 @@ export default function App() {
       if (isEditing) {
         if (select) return (
           <select autoFocus value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })}
-            onBlur={saveEdit} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit", background: "#EFF6FF" }}>
+            onBlur={saveEdit} onClick={e => e.stopPropagation()}
+            style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit", background: "#EFF6FF" }}>
             {select.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         );
         return <input autoFocus type={numeric ? "number" : "text"} value={editCell.val}
           onChange={e => setEditCell({ ...editCell, val: e.target.value })}
+          onClick={e => e.stopPropagation()}
           onBlur={saveEdit} onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null); }}
           style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: numeric ? "monospace" : "inherit", background: "#EFF6FF", outline: "none", ...style }} />;
       }
-      return <span onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
+      return <span
+        onClick={e => e.stopPropagation()}
+        onDoubleClick={e => startEdit(e, f, field)}
+        title="Doble click para editar"
+        style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
     };
     const provs = [...new Set(data.fantasmas.map(f => f.proveedor).filter(Boolean))];
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
@@ -1925,7 +1937,7 @@ export default function App() {
                 const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
                 return (
                   <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
-                    <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
+                    <td onClick={() => goDelayed(go)} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
                     {modo === "axia" && <td style={td}><EditCell f={f} field="vendedor" /></td>}
                     <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EditCell f={f} field="proveedor" /></td>
                     <td style={{ ...td, fontWeight: 600 }}><EditCell f={f} field="cliente" /></td>
@@ -1936,7 +1948,7 @@ export default function App() {
                         <EditCell f={f} field="empaque" select={EMPAQUES} />
                       </div>
                     </td>}
-                    {bitTab === "estado" && <><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td></>}
+                    {bitTab === "estado" && <><td onClick={() => goDelayed(go)} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td></>}
                     {(bitTab === "fantasmas" || bitTab === "todos") && <>
                       <td style={td}><EditCell f={f} field="costoMercancia" numeric style={{ color: "#DC2626", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
                       <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>{f.clientePago ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : (f.abonoMercancia || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoMercancia)}</span> : f.costoDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
@@ -4586,7 +4598,9 @@ export default function App() {
       const isMerc = pagoTab === "mercancia";
       const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
 
-      const startEdit = (e, f, field) => { e.stopPropagation(); setEditCell({ id: f.id, field, val: String(f[field] ?? "") }); };
+      const clickTimer2 = useRef(null);
+      const startEdit = (e, f, field) => { e.stopPropagation(); if (clickTimer2.current) clearTimeout(clickTimer2.current); setEditCell({ id: f.id, field, val: String(f[field] ?? "") }); };
+      const goDelayed2 = (fn) => { if (clickTimer2.current) clearTimeout(clickTimer2.current); clickTimer2.current = setTimeout(fn, 220); };
       const saveEdit = () => {
         if (!editCell) return;
         const f = data.fantasmas.find(x => x.id === editCell.id);
@@ -4599,10 +4613,10 @@ export default function App() {
       const EC = ({ f, field, numeric = false, select = null, style = {} }) => {
         const isE = editCell?.id === f.id && editCell?.field === field;
         if (isE) {
-          if (select) return <select autoFocus value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onBlur={saveEdit} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit" }}>{select.map(o => <option key={o} value={o}>{o}</option>)}</select>;
-          return <input autoFocus type={numeric ? "number" : "text"} value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onBlur={saveEdit} onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null); }} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: numeric ? "monospace" : "inherit", background: "#EFF6FF", outline: "none", ...style }} />;
+          if (select) return <select autoFocus value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onBlur={saveEdit} onClick={e => e.stopPropagation()} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: "inherit" }}>{select.map(o => <option key={o} value={o}>{o}</option>)}</select>;
+          return <input autoFocus type={numeric ? "number" : "text"} value={editCell.val} onChange={e => setEditCell({ ...editCell, val: e.target.value })} onClick={e => e.stopPropagation()} onBlur={saveEdit} onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null); }} style={{ width: "100%", fontSize: 11, border: "2px solid #2563EB", borderRadius: 4, padding: "2px 4px", fontFamily: numeric ? "monospace" : "inherit", background: "#EFF6FF", outline: "none", ...style }} />;
         }
-        return <span onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
+        return <span onClick={e => e.stopPropagation()} onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
       };
 
       let lista = data.fantasmas.filter(f => f.estado !== "CERRADO");
@@ -4681,7 +4695,7 @@ export default function App() {
                 const desconocido = isMerc ? f.costoDesconocido : f.fleteDesconocido;
                 return (
                   <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
-                    <td onClick={go} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
+                    <td onClick={() => goDelayed2(go)} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
                     <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EC f={f} field="proveedor" /></td>
                     <td style={{ ...td, fontWeight: 600 }}><EC f={f} field="cliente" /></td>
                     <td style={{ ...td, maxWidth: 130 }}><EC f={f} field="descripcion" /></td>
