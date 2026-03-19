@@ -208,7 +208,7 @@ const TJ_ESTADOS = ["PEDIDO", "RECOLECTADO", "BODEGA_TJ", "ENTREGADO"];
 
 function fmt(n) { if (n == null || isNaN(n)) return "$0"; return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtD(d) { if (!d) return "—"; return new Date(d + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" }); }
-function today() { return new Date().toISOString().split("T")[0]; }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function genId(n) { return `F-${String(n).padStart(4, "0")}`; }
 function diasHabiles(fechaStr) {
   if (!fechaStr) return 0;
@@ -222,7 +222,7 @@ function diasHabiles(fechaStr) {
   }
   return count;
 }
-const init = () => ({ fantasmas: [], nextId: 2800, colchon: { montoOriginal: 0, saldoActual: 0, movimientos: [] }, vendedores: [] });
+const init = () => ({ fantasmas: [], nextId: 2800, colchon: { montoOriginal: 0, saldoActual: 0, movimientos: [] }, vendedores: [], clientes: [], proveedoresList: [], provUbicaciones: {}, proveedoresInfo: {}, gastosAdmin: [], gastosUSA: [], gastosBodega: [], transferencias: [], adelantosAdmin: [], cuentasPorPagar: [], cuentasPorCobrarEmp: [], fondos: {}, fondosCustom: [], fondosMovs: [], envios: [], bitacoraGanancias: [] });
 
 
 const I = {
@@ -788,7 +788,7 @@ export default function App() {
     const sections = HOME_SECTIONS[role] || [];
     const activos = data.fantasmas.filter(f => f.estado !== "CERRADO").length;
     const urgentes = data.fantasmas.filter(f => f.urgente && f.estado !== "CERRADO").length;
-    const porCobrar = data.fantasmas.filter(f => f.estado !== "CERRADO" && (!f.clientePago || (!f.fletePagado && f.costoFlete > 0))).length;
+    const porCobrar = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.dineroStatus !== "TRANS_PENDIENTE" && (!f.clientePago || (!f.fletePagado && f.costoFlete > 0))).length;
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #1A2744 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", padding: 16 }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -1428,7 +1428,7 @@ export default function App() {
     const fmtMXND = (n) => "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 }) + " MXN";
 
     // Pedidos stats
-    const pendClientes = act.filter(f => !f.clientePago);
+    const pendClientes = act.filter(f => !f.clientePago && f.dineroStatus !== "TRANS_PENDIENTE");
     const deudaClientes = pendClientes.reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
     const deudaFletes = act.filter(f => !f.fletePagado && f.costoFlete > 0).reduce((s, f) => s + (f.costoFlete - (f.abonoFlete || 0)), 0);
     const credProv = act.filter(f => f.creditoProveedor && !f.proveedorPagado).reduce((s, f) => s + f.costoMercancia, 0);
@@ -4720,7 +4720,7 @@ export default function App() {
   // ============ ADMIN EFECTIVO ============
   const AdminEfectivo = () => {
     const [showMov, setShowMov] = useState(false);
-    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
+    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
@@ -4855,11 +4855,11 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
           <div style={{ display: "flex", gap: 4 }}>
-            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#059669" }}>💰 Ingreso</Btn>
-            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "egreso", destino: "ADMIN", concepto: "", monto: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#DC2626" }}>💸 Gasto</Btn>
-            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "envio", destino: "BODEGA_USA", concepto: "", monto: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#2563EB" }}>📤 Enviar</Btn>
-            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "recibir", destino: "BODEGA_TJ", concepto: "", monto: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "", pedidosRec: {}, recSearch: "" }); setShowMov(true); }} style={{ background: "#7C3AED" }}>📥 Recibir</Btn>
-            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "cambio", concepto: "", monto: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#7C3AED" }}>💱 Cambio</Btn>
+            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#059669" }}>💰 Ingreso</Btn>
+            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "egreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#DC2626" }}>💸 Gasto</Btn>
+            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "envio", destino: "BODEGA_USA", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#2563EB" }}>📤 Enviar</Btn>
+            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "recibir", destino: "BODEGA_TJ", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "", pedidosRec: {}, recSearch: "" }); setShowMov(true); }} style={{ background: "#7C3AED" }}>📥 Recibir</Btn>
+            <Btn sz="sm" onClick={() => { setMovForm({ tipo: "cambio", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" }); setShowMov(true); }} style={{ background: "#7C3AED" }}>💱 Cambio</Btn>
           </div>
         </div>
 
