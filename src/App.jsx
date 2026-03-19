@@ -668,6 +668,13 @@ export default function App() {
   const [bitPagoMerc, setBitPagoMerc] = useState("ALL");
   const [bitPagoFlete, setBitPagoFlete] = useState("ALL");
   const [bitEstado, setBitEstado] = useState("ALL");
+    // Modal states lifted to App level to prevent closure on Firestore updates
+  const [showMovApp, setShowMovApp] = useState(false);
+  const [movFormApp, setMovFormApp] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: "", nota: "", moneda: "USD", tipoCambio: "" });
+  const [showAdelantoApp, setShowAdelantoApp] = useState(false);
+  const [showGastoApp, setShowGastoApp] = useState(false);
+  const [showCobroApp, setShowCobroApp] = useState(false);
+  const [showGastoUSAApp, setShowGastoUSAApp] = useState(false);
     const [showNew, setShowNew] = useState(false);
   const [showColchon, setShowColchon] = useState(false);
   const [showTransApp, setShowTransApp] = useState(false);
@@ -3729,7 +3736,7 @@ export default function App() {
 
     // FlujoEfectivoUSA
     const FlujoEfectivoUSA = () => {
-      const [showGastoUSA, setShowGastoUSA] = useState(false);
+      const showGastoUSA = showGastoUSAApp; const setShowGastoUSA = setShowGastoUSAApp;
       const [gastoUSAForm, setGastoUSAForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
       const CATEGORIAS_USA = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "PROVEEDOR", "OTRO"];
 
@@ -4574,10 +4581,10 @@ export default function App() {
 
     const FlujoEfectivo = () => {
       const [subTab, setSubTab] = useState("clientes");
-      const [showGasto, setShowGasto] = useState(false);
+      const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
       const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
       const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
-      const [showCobro, setShowCobro] = useState(false);
+      const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
       const [cobSearch, setCobSearch] = useState("");
       const [editMov, setEditMov] = useState(null); // { fId, movId, monto, fecha, nota }
       const CATEGORIAS_GASTO = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "OTRO"];
@@ -5073,8 +5080,8 @@ export default function App() {
   // ============ ADMIN EFECTIVO ============
   const AdminEfectivo = () => {
     const [efMoneda, setEfMoneda] = useState("ALL");
-    const [showMov, setShowMov] = useState(false);
-    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
+    const showMov = showMovApp; const setShowMov = setShowMovApp;
+    const movForm = { ...movFormApp, fecha: movFormApp.fecha || today() }; const setMovForm = setMovFormApp;
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
@@ -5558,7 +5565,7 @@ export default function App() {
   // ============ ADMIN ADELANTOS (standalone tab) ============
   const AdminAdelantos = () => {
     const [adelSearch, setAdelSearch] = useState("");
-    const [showAdelanto, setShowAdelanto] = useState(false);
+    const showAdelanto = showAdelantoApp; const setShowAdelanto = setShowAdelantoApp;
     const [showRecuperar, setShowRecuperar] = useState(null);
     const [adelTab, setAdelTab] = useState("pendientes");
     const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "transferencia" });
