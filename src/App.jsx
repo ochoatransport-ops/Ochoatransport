@@ -3035,10 +3035,13 @@ export default function App() {
           }, 0);
           const sinPago = selectedPedidos.filter(f => !f.clientePago && (f.abonoMercancia || 0) <= 0);
           const hayPedidosSinPago = sinPago.length > 0;
+          // Pedidos pagados por transferencia → solo puede salir de Caja Admin
+          const conTransferencia = selectedPedidos.filter(f => pagoConTransferencia(f) || ["FANTASMA_PAGADO","TODO_PAGADO"].includes(f.dineroStatus) && (data.transferencias||[]).some(t => t.pedidoId === f.id && t.confirmada));
+          const soloAdmin = conTransferencia.length > 0;
           // Saldo admin USD
           const admMovs = data.gastosAdmin || [];
           const admUSD = admMovs.filter(m => m.moneda !== "MXN");
-          const saldoAdmUSD = admUSD.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.monto || 0), 0) - admUSD.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.monto || 0), 0);
+          const saldoAdmUSD = admUSD.filter(m => m.tipoMov === "ingreso").reduce((s, m) => s + (m.montoUSD || (m.moneda !== "MXN" ? m.monto : 0) || 0), 0) - admUSD.filter(m => m.tipoMov === "egreso").reduce((s, m) => s + (m.montoUSD || (m.moneda !== "MXN" ? m.monto : 0) || 0), 0);
           const sinSaldoAdmin = totalMonto > saldoAdmUSD;
           return (
             <Modal title="📨 Enviar sobre a USA" onClose={() => { setShowSobreModal(false) }} w={420}>
@@ -3047,14 +3050,22 @@ export default function App() {
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿De dónde sale el dinero?</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <button onClick={() => marcarSobreEnviado("adolfo")} style={{ padding: "14px 16px", borderRadius: 10, border: `2px solid ${hayPedidosSinPago ? "#D97706" : "#059669"}`, background: hayPedidosSinPago ? "#FEF3C7" : "#ECFDF5", cursor: "pointer", textAlign: "left" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: hayPedidosSinPago ? "#92400E" : "#065F46" }}>🇲🇽 Caja de Adolfo (Bodega TJ)</div>
-                  {hayPedidosSinPago ? (
-                    <div style={{ fontSize: 10, color: "#92400E", marginTop: 4 }}>⚠️ {sinPago.length} pedido{sinPago.length > 1 ? "s" : ""} aún sin pago: {sinPago.map(f => f.cliente).join(", ")}</div>
-                  ) : (
-                    <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>El cliente ya trajo el dinero a bodega</div>
-                  )}
-                </button>
+                {/* Caja Adolfo — solo si NO hay pedidos con transferencia */}
+                {!soloAdmin && (
+                  <button onClick={() => marcarSobreEnviado("adolfo")} style={{ padding: "14px 16px", borderRadius: 10, border: `2px solid ${hayPedidosSinPago ? "#D97706" : "#059669"}`, background: hayPedidosSinPago ? "#FEF3C7" : "#ECFDF5", cursor: "pointer", textAlign: "left" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: hayPedidosSinPago ? "#92400E" : "#065F46" }}>🇲🇽 Caja de Adolfo (Bodega TJ)</div>
+                    {hayPedidosSinPago ? (
+                      <div style={{ fontSize: 10, color: "#92400E", marginTop: 4 }}>⚠️ {sinPago.length} pedido{sinPago.length > 1 ? "s" : ""} aún sin pago: {sinPago.map(f => f.cliente).join(", ")}</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>El cliente ya trajo el dinero a bodega</div>
+                    )}
+                  </button>
+                )}
+                {soloAdmin && (
+                  <div style={{ padding: "10px 14px", borderRadius: 8, background: "#EFF6FF", border: "1px solid #BFDBFE", fontSize: 10, color: "#1E40AF" }}>
+                    💳 {conTransferencia.length} pedido{conTransferencia.length > 1 ? "s" : ""} pagado{conTransferencia.length > 1 ? "s" : ""} por transferencia — el dinero está en Caja Admin
+                  </div>
+                )}
                 {sinSaldoAdmin ? (
                   <div style={{ padding: "14px 16px", borderRadius: 10, border: "2px solid #D1D5DB", background: "#F9FAFB", opacity: 0.6 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#9CA3AF" }}>💼 Caja Admin (Administración)</div>
