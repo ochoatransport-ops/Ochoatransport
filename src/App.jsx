@@ -5086,8 +5086,7 @@ export default function App() {
   const AdminEfectivo = () => {
     const [efMoneda, setEfMoneda] = useState("ALL");
     const showMov = showMovApp; const setShowMov = setShowMovApp;
-    const movForm = movFormApp.fecha ? movFormApp : { ...movFormApp, fecha: today() };
-    const setMovForm = (v) => setMovFormApp(typeof v === "function" ? v(movFormApp) : v);
+    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
