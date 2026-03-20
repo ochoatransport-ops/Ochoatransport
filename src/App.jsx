@@ -324,13 +324,28 @@ const ROLE_NAV = {
 const EMPTY_FORM = { cliente: "", descripcion: "", proveedor: "", ubicacionProv: "", vendedor: "", tipoMercancia: "", empaque: "", empaqueOtro: "", cantBultos: "1", modoPrecios: "total", cantidad: "", costoUnitario: "", costoMercancia: "", costoFlete: "", urgente: false, soloRecoger: false, fleteDesconocido: false, costoDesconocido: false, pedidoEspecial: false, precioVenta: "", notas: "" };
 
 // ============ NEW FORM (module-level to prevent remount on App re-render) ============
-const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Modal, Btn, Fld, Inp, AutoInp, I, navigate, TIPOS_MERCANCIA }) => {
+const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, today, fmt, fmtD, Modal, Btn, Fld, Inp, AutoInp, I, navigate, TIPOS_MERCANCIA }) => {
   const [f, sF] = useState(EMPTY_FORM);
-  // Reset form every time it opens
   const prevShowNew = useRef(false);
-  if (showNew && !prevShowNew.current) { sF(EMPTY_FORM); }
+  if (showNew && !prevShowNew.current) {
+    if (editPedido) {
+      sF({ ...EMPTY_FORM, ...editPedido,
+        costoMercancia: editPedido.pedidoEspecial ? String(editPedido.costoReal ?? editPedido.costoMercancia) : String(editPedido.costoMercancia || ""),
+        costoFlete: String(editPedido.costoFlete || ""),
+        cantBultos: String(editPedido.cantBultos || 1),
+        cantidad: String(editPedido.cantidad || ""),
+        costoUnitario: String(editPedido.costoUnitario || ""),
+        precioVenta: editPedido.pedidoEspecial ? String(editPedido.costoMercancia || "") : "",
+        notas: editPedido.notas || "",
+        modoPrecios: editPedido.cantidad && editPedido.costoUnitario ? "unitario" : "total",
+      });
+    } else {
+      sF(EMPTY_FORM);
+    }
+  }
   prevShowNew.current = showNew;
   if (!showNew) return null;
+  const isEdit = !!editPedido;
   const calcCosto = f.modoPrecios === "unitario" ? (parseFloat(f.cantidad) || 0) * (parseFloat(f.costoUnitario) || 0) : parseFloat(f.costoMercancia) || 0;
   const allClientes = [...new Set([...(data.clientes || []), ...data.fantasmas.map(x => x.cliente).filter(Boolean)])].sort();
   const allProveedores = [...new Set([...Object.keys(data.proveedoresInfo || {}), ...(data.proveedoresList || []), ...data.fantasmas.map(x => x.proveedor).filter(Boolean)])].sort();
@@ -341,7 +356,7 @@ const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Moda
   const noOpt = (list, label) => list.length === 0 ? <div style={{ fontSize: 10, color: "#D97706", marginTop: 2 }}>⚠️ Registra {label} primero</div> : null;
 
   return (
-    <Modal title="Nuevo Pedido" onClose={() => { setShowNew(false) }} w={560}>
+    <Modal title={isEdit ? "✏️ Editar Pedido" : "🛒 Nuevo Pedido"} onClose={() => { setShowNew(false) }} w={560}>
       {/* Tabs: Normal / Especial */}
       <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 16 }}>
         <button onClick={() => sF({ ...f, pedidoEspecial: false, precioVenta: "" })} style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", background: !f.pedidoEspecial ? "#fff" : "transparent", boxShadow: !f.pedidoEspecial ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: !f.pedidoEspecial ? 700 : 500, fontFamily: "inherit", color: !f.pedidoEspecial ? "#1A2744" : "#6B7280" }}>
@@ -607,21 +622,40 @@ const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Moda
           const ganancia = f.pedidoEspecial ? (precioVentaFinal - costoM) : null;
           const comPct = precioVentaFinal >= 10000 ? 0.005 : precioVentaFinal >= 1000 ? 0.008 : 0;
           const comCalc = Math.round(precioVentaFinal * comPct * 100) / 100;
-          addF({ ...f,
-            costoMercancia: precioVentaFinal,   // fantasma = precio que paga el cliente
-            costoReal: f.pedidoEspecial ? costoM : null,  // costo proveedor, solo interno
-            pedidoEspecial: f.pedidoEspecial || false,
-            modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
-            precioVentaUnitario: esPieza ? precioVentaUnit : null,
-            gananciaEspecial: ganancia,
-            costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
-            cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
-            costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
-            comisionMonto: f.cobrarComision ? comCalc : 0,
-            comisionPendiente: f.cobrarComision || false,
-            totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0)
-          });
-        }}><I.Plus /> Crear</Btn>
+          if (isEdit) {
+            updF(editPedido.id, { ...f,
+              costoMercancia: precioVentaFinal,
+              costoReal: f.pedidoEspecial ? costoM : null,
+              pedidoEspecial: f.pedidoEspecial || false,
+              modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
+              precioVentaUnitario: esPieza ? precioVentaUnit : null,
+              gananciaEspecial: ganancia,
+              costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
+              cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
+              costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
+              comisionMonto: f.cobrarComision ? comCalc : 0,
+              comisionPendiente: f.cobrarComision || false,
+              totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0),
+              fechaActualizacion: today(),
+            });
+          } else {
+            addF({ ...f,
+              costoMercancia: precioVentaFinal,
+              costoReal: f.pedidoEspecial ? costoM : null,
+              pedidoEspecial: f.pedidoEspecial || false,
+              modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
+              precioVentaUnitario: esPieza ? precioVentaUnit : null,
+              gananciaEspecial: ganancia,
+              costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
+              cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
+              costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
+              comisionMonto: f.cobrarComision ? comCalc : 0,
+              comisionPendiente: f.cobrarComision || false,
+              totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0)
+            });
+          }
+          setShowNew(false);
+        }}>{isEdit ? "💾 Guardar" : <><I.Plus /> Crear</>}</Btn>
       </div>
     </Modal>
   );
@@ -693,6 +727,7 @@ export default function App() {
   const [showCobroApp, setShowCobroApp] = useState(false);
   const [showGastoUSAApp, setShowGastoUSAApp] = useState(false);
     const [showNew, setShowNew] = useState(false);
+  const [editPedidoId, setEditPedidoId] = useState(null);
   const [showColchon, setShowColchon] = useState(false);
   const [showTransApp, setShowTransApp] = useState(false);
   const [tFormTipo, setTFormTipo] = useState("flete"); // only tipo lives at App level to survive re-renders
@@ -1312,7 +1347,7 @@ export default function App() {
           <Badge estado={f.estado} />
           <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
           <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
-            {canEdit && <Btn v="secondary" sz="sm" onClick={() => { setEd(true); setEf({ cliente: f.cliente, descripcion: f.descripcion, proveedor: f.proveedor || "", vendedor: f.vendedor || "", tipoMercancia: f.tipoMercancia || "", empaque: f.empaque || "", cantBultos: String(f.cantBultos || 1), costoMercancia: f.pedidoEspecial ? String(f.costoReal ?? f.costoMercancia) : String(f.costoMercancia), costoFlete: f.costoFlete, notas: f.notas || "", pedidoEspecial: f.pedidoEspecial || false, modoEspecial: f.modoEspecial || "total", precioVenta: f.pedidoEspecial ? String(f.costoMercancia) : "", cantidad: String(f.cantidad || ""), costoUnitario: String(f.costoUnitario || "") }); }}>✏️ Editar</Btn>}
+            {canEdit && <Btn v="secondary" sz="sm" onClick={() => { setEditPedidoId(f.id); setShowNew(true); }}>✏️ Editar</Btn>}
             {canDelete && <Btn v="danger" sz="sm" onClick={() => setConfirm(f.id)}><I.Trash /></Btn>}
           </div>
         </div>
@@ -3015,7 +3050,7 @@ export default function App() {
     ];
 
     const pendientesMerc = data.fantasmas.filter(f => f.estado !== "CERRADO" && !f.clientePago);
-    const pendientesFlete = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.clientePago && !f.fletePagado && !f.soloRecoger && (f.costoFlete > 0 || f.fleteDesconocido));
+    const pendientesFlete = data.fantasmas.filter(f => f.estado !== "CERRADO" && f.clientePago && !f.fletePagado && !f.soloRecoger);
     const totalPorCobrarMerc = pendientesMerc.reduce((s, f) => s + ((f.totalVenta || f.costoMercancia) - (f.abonoMercancia || 0)), 0);
     const totalPorCobrarFlete = pendientesFlete.reduce((s, f) => s + ((f.costoFlete || 0) - (f.abonoFlete || 0)), 0);
     const selCount = Object.keys(selPedidos).filter(k => selPedidos[k]).length;
@@ -4688,17 +4723,22 @@ export default function App() {
       };
 
       // Payment registration
-      const pendientesPago = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido))));
+      const pendientesPago = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && !f.soloRecoger)));
       const pagoSearched = pagoSearch ? pendientesPago.filter(f => f.cliente.toLowerCase().includes(pagoSearch.toLowerCase()) || f.id.toLowerCase().includes(pagoSearch.toLowerCase()) || (f.proveedor||"").toLowerCase().includes(pagoSearch.toLowerCase())) : pendientesPago;
 
-      const registrarPago = () => {
+      const registrarPago = async () => {
         if (!pagoSel) return;
         const usd = parseFloat(pagoMonto) || 0;
         const mxn = parseFloat(pagoMotoMXN) || 0;
         const tc = parseFloat(pagoTC) || 0;
         const mxnToUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
         const totalUSD = usd + mxnToUsd;
-        if (totalUSD <= 0) return;
+        // Allow $0 flete payments with confirmation
+        if (totalUSD <= 0 && isMerc) return;
+        if (totalUSD === 0 && !isMerc) {
+          const ok = await showConfirm("¿Vas a registrar un flete de $0 como pagado?\n\nEsto marcará el flete como pagado aunque el monto sea $0.00.\n\n¿Estás seguro?");
+          if (!ok) return;
+        }
         const f = data.fantasmas.find(x => x.id === pagoSel.fId);
         if (!f) return;
         const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnToUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + ");
@@ -4720,7 +4760,7 @@ export default function App() {
 
       // Table data
       let lista = data.fantasmas.filter(f => f.estado !== "CERRADO");
-      if (filtro === "pendientes") lista = lista.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)));
+      if (filtro === "pendientes") lista = lista.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && !f.soloRecoger));
       if (filtro === "pagados") lista = lista.filter(f => isMerc ? f.clientePago : f.fletePagado);
       if (busqueda) { const s = busqueda.toLowerCase(); lista = lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s)); }
       lista = [...lista].sort((a, b) => { const va = a[sk]||""; const vb = b[sk]||""; return typeof va === "number" ? (va-vb)*sd : String(va).localeCompare(String(vb))*sd; });
@@ -4733,7 +4773,7 @@ export default function App() {
 
       const pendCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)))).length;
       const pagCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).length;
-      const totalPend = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && f.costoFlete > 0))).reduce((s,f) => s + (isMerc ? ((f.totalVenta||f.costoMercancia)-(f.abonoMercancia||0)) : ((f.costoFlete||0)-(f.abonoFlete||0))), 0);
+      const totalPend = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && !f.soloRecoger))).reduce((s,f) => s + (isMerc ? ((f.totalVenta||f.costoMercancia)-(f.abonoMercancia||0)) : ((f.costoFlete||0)-(f.abonoFlete||0))), 0);
       const totalPag = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).reduce((s,f) => s + (isMerc ? (f.totalVenta||f.costoMercancia) : (f.costoFlete||0)), 0);
 
       const th = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#1A2744", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap", cursor: "pointer" };
@@ -6995,7 +7035,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
         <div style={{ display: view === "clientes" ? "block" : "none" }}><Clientes /></div>
         <div style={{ display: view === "proveedores" ? "block" : "none" }}><Proveedores /></div>
       </main>
-      <NewForm showNew={showNew} data={data} addF={addF} role={role} setShowNew={setShowNew} today={today} fmt={fmt} fmtD={fmtD} Modal={Modal} Btn={Btn} Fld={Fld} Inp={Inp} AutoInp={AutoInp} I={I} navigate={navigate} TIPOS_MERCANCIA={TIPOS_MERCANCIA} />
+      <NewForm showNew={showNew} data={data} addF={addF} updateF={updF} editPedido={editPedidoId ? data.fantasmas.find(x => x.id === editPedidoId) || null : null} role={role} setShowNew={(v) => { setShowNew(v); if (!v) setEditPedidoId(null); }} today={today} fmt={fmt} fmtD={fmtD} Modal={Modal} Btn={Btn} Fld={Fld} Inp={Inp} AutoInp={AutoInp} I={I} navigate={navigate} TIPOS_MERCANCIA={TIPOS_MERCANCIA} />
       {showColchon && <ColchonModal />}
       {/* Global dialog modal - replaces window.alert and window.confirm */}
       {dialog && (
