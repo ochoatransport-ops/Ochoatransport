@@ -1066,6 +1066,13 @@ export default function App() {
     nd = { ...nd, envios: (nd.envios || []).map(e => ({ ...e, pedidos: e.pedidos.filter(p => p.id !== id) })).filter(e => e.pedidos.length > 0) };
     nd = { ...nd, transferencias: (nd.transferencias || []).filter(t => t.pedidoId !== id) };
     nd = { ...nd, adelantosAdmin: (nd.adelantosAdmin || []).filter(a => a.pedidoId !== id) };
+    // Remove gastosBodega cobros linked to this pedido
+    nd = { ...nd, gastosBodega: (nd.gastosBodega || []).filter(g => !(g.concepto || "").includes(id)) };
+    // Remove bitacoraGanancias entries for this pedido
+    nd = { ...nd, bitacoraGanancias: (nd.bitacoraGanancias || []).filter(b => b.pedidoId !== id) };
+    // Remove gastosAdmin adelanto entries for this pedido
+    const adelIds = new Set((data.adelantosAdmin || []).filter(a => a.pedidoId === id).map(a => a.movRef));
+    nd = { ...nd, gastosAdmin: (nd.gastosAdmin || []).filter(g => !adelIds.has(g.id)) };
     // Clean up CxP abonos linked to this pedido's flete
     if (f && f.fletePagadoCxp) {
       nd.cuentasPorPagar = (nd.cuentasPorPagar || []).map(c => {
@@ -4831,7 +4838,7 @@ export default function App() {
 
 ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fantasmas.find(x => x.id === m.folio); if (!f) return;
               const newMovs = (f.movimientos||[]).filter(x => x.id !== m.id);
-              const diff = m.montoUSD || m.monto || 0;
+              const diff = m.montoUSD || (m.montoMXN && m.tipoCambio ? Math.round(m.montoMXN / m.tipoCambio * 100) / 100 : 0) || m.monto || 0;
               let upd = {};
               if ((m.concepto||"").includes("mercancía")) {
                 const na = Math.max(0,(f.abonoMercancia||0)-diff);
@@ -5267,21 +5274,45 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
     const eliminarMov = async (mId) => {
       const m = (data.gastosAdmin || []).find(x => x.id === mId);
       if (!m) return;
-      const desc = `${m.tipo === "ingreso" ? "Ingreso" : "Egreso"}: ${m.concepto || "?"} — ${fmt(m.monto || 0)}`;
-      if (!await showConfirm(`¿Estás seguro de eliminar este movimiento?\n\n${desc}\n\nEsto puede afectar sobres y pedidos vinculados.`)) return;
+      const desc = `${m.tipoMov === "ingreso" ? "Ingreso" : "Egreso"}: ${m.concepto || "?"} — ${fmt(m.monto || 0)}`;
+      if (!await showConfirm(`¿Estás seguro de eliminar este movimiento?\n\n${desc}\n\nEsto puede afectar sobres, adelantos y pedidos vinculados.`)) return;
       const ref = m?.cambioRef;
-      const nd = { ...data, gastosAdmin: (data.gastosAdmin || []).filter(x => x.id !== mId && x.id !== ref) };
-      // If it's a SOBRE USA egreso, revert linked pedidos
+      let nd = { ...data, gastosAdmin: (data.gastosAdmin || []).filter(x => x.id !== mId && x.id !== ref) };
+
+      // If it's an ADELANTO egreso → remove linked adelantosAdmin entry + mark pedido
+      const isAdelanto = (m.concepto || "").startsWith("ADELANTO ");
+      if (isAdelanto || m.adelantoRef) {
+        // Remove the adelanto entry that references this movement
+        nd.adelantosAdmin = (nd.adelantosAdmin || []).filter(a => a.movRef !== mId && a.id !== m.adelantoRef);
+        // Also remove recovery income if exists
+        nd.gastosAdmin = nd.gastosAdmin.filter(x => x.adelantoRef !== m.adelantoRef);
+        // Revert pedido.adelantoAdmin flag if no more adelantos for that pedido
+        if (isAdelanto) {
+          const pedId = (m.concepto || "").replace("ADELANTO ", "").split(" ")[0];
+          const stillHas = nd.adelantosAdmin.some(a => a.pedidoId === pedId && !a.recuperado);
+          if (!stillHas) nd.fantasmas = (nd.fantasmas || []).map(f => f.id !== pedId ? f : { ...f, adelantoAdmin: false });
+        }
+      }
+
+      // If it's a SOBRE USA egreso → revert linked pedidos dineroStatus + remove adelanto
       if ((m.concepto || "").startsWith("SOBRE USA")) {
-        const sobreIds = (m.concepto.match(/[a-f0-9-]{36}/g) || []);
+        const fIdMatch = (m.concepto || "").match(/F-\d+/);
+        const fId = fIdMatch ? fIdMatch[0] : null;
+        nd.adelantosAdmin = (nd.adelantosAdmin || []).filter(a => !(a.pedidoId === fId && a.movRef === mId));
         nd.fantasmas = (nd.fantasmas || []).map(f => {
-          if (sobreIds.includes(f.id) || (f.dineroStatus === "DINERO_CAMINO" && f.sobreOrigen === "admin")) {
+          if (f.id === fId || (f.dineroStatus === "DINERO_CAMINO" && f.sobreOrigen === "admin" && !fId)) {
             const wasClientePago = f.clientePago;
-            return { ...f, dineroStatus: wasClientePago ? "SOBRE_LISTO" : "SIN_FONDOS", sobreOrigen: null, historial: [...(f.historial || []), { fecha: today(), accion: "Sobre deshecho (movimiento eliminado)", quien: "Admin" }] };
+            return { ...f, dineroStatus: wasClientePago ? "SOBRE_LISTO" : "SIN_FONDOS", sobreOrigen: null, adelantoAdmin: false, historial: [...(f.historial || []), { fecha: today(), accion: "Sobre deshecho (movimiento eliminado)", quien: "Admin" }] };
           }
           return f;
         });
       }
+
+      // If it's a RECUPERADO ADELANTO ingreso → mark adelanto as not recovered
+      if ((m.concepto || "").startsWith("RECUPERADO ADELANTO") && m.adelantoRef) {
+        nd.adelantosAdmin = (nd.adelantosAdmin || []).map(a => a.id !== m.adelantoRef ? a : { ...a, recuperado: false, fechaRecuperacion: null, montoRecuperado: null });
+      }
+
       persist(nd);
     };
 
@@ -5615,27 +5646,33 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       const t = allTrans.find(x => x.id === id);
       if (!t) return;
       let nd = { ...data, transferencias: allTrans.map(x => x.id !== id ? x : { ...x, confirmada: true, noRecibida: false, fechaConfirmacion: today(), confirmadaPor: role }) };
-      // NOW apply the payment to the pedido
       const montoUSD = t.montoUSD || 0;
+      const pedido = data.fantasmas.find(f => f.id === t.pedidoId);
       if (t.tipo === "flete") {
+        const nuevoAbono = (pedido?.abonoFlete || 0) + montoUSD;
         nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : {
-          ...f, abonoFlete: (f.abonoFlete || 0) + montoUSD,
-          fletePagado: (f.abonoFlete || 0) + montoUSD >= (f.costoFlete || 0),
+          ...f, abonoFlete: nuevoAbono,
+          fletePagado: nuevoAbono >= (f.costoFlete || 0),
           transferenciaPendiente: false,
-          dineroStatus: f.clientePago ? "TODO_PAGADO" : f.dineroStatus === "TRANS_PENDIENTE" ? "SIN_FONDOS" : f.dineroStatus,
+          dineroStatus: f.clientePago ? (nuevoAbono >= (f.costoFlete||0) ? "TODO_PAGADO" : "FANTASMA_PAGADO") : f.dineroStatus,
           fechaActualizacion: today(),
           historial: [...(f.historial || []), { fecha: today(), accion: `✅ Transferencia flete confirmada: ${fmt(montoUSD)} → ${t.banco}`, quien: role }]
         });
+        if (pedido) nd.gastosBodega = [...(nd.gastosBodega||[]), { id: Date.now(), concepto: `PAGO FLETE TRANS ${t.pedidoId}`, monto: montoUSD, moneda: "USD", categoria: "COBRO FLETE", fecha: today(), nota: pedido.cliente, tipoMov: "ingreso" }];
       } else {
+        const nuevoAbono = (pedido?.abonoMercancia || 0) + montoUSD;
+        const fleteOk = pedido ? (pedido.fletePagado || !!pedido.soloRecoger) : false;
+        const mercOk = nuevoAbono >= (pedido?.costoMercancia || 0);
         nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : {
-          ...f, abonoMercancia: (f.abonoMercancia || 0) + montoUSD,
-          clientePago: (f.abonoMercancia || 0) + montoUSD >= f.costoMercancia,
-          clientePagoMonto: (f.abonoMercancia || 0) + montoUSD,
+          ...f, abonoMercancia: nuevoAbono,
+          clientePago: mercOk,
+          clientePagoMonto: nuevoAbono,
           transferenciaPendiente: false,
-          dineroStatus: (f.abonoMercancia || 0) + montoUSD >= f.costoMercancia ? (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido) ? "TODO_PAGADO" : "FANTASMA_PAGADO") : "SIN_FONDOS",
+          dineroStatus: mercOk ? (fleteOk ? "TODO_PAGADO" : "FANTASMA_PAGADO") : "SIN_FONDOS",
           fechaActualizacion: today(),
           historial: [...(f.historial || []), { fecha: today(), accion: `✅ Transferencia fantasma confirmada: ${fmt(montoUSD)} → ${t.banco}`, quien: role }]
         });
+        if (pedido) nd.gastosBodega = [...(nd.gastosBodega||[]), { id: Date.now(), concepto: `PAGO FANTASMA TRANS ${t.pedidoId}`, monto: montoUSD, moneda: "USD", categoria: "COBRO FANTASMA", fecha: today(), nota: pedido.cliente, tipoMov: "ingreso" }];
       }
       persist(nd);
     };
@@ -5643,12 +5680,16 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       const t = allTrans.find(x => x.id === id);
       if (!t) return;
       let nd = { ...data, transferencias: allTrans.map(x => x.id !== id ? x : { ...x, confirmada: false, fechaConfirmacion: null }) };
-      // Revert payment from pedido
       const montoUSD = t.montoUSD || 0;
+      const pedido = data.fantasmas.find(f => f.id === t.pedidoId);
       if (t.tipo === "flete") {
-        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoFlete: Math.max(0, (f.abonoFlete || 0) - montoUSD), fletePagado: Math.max(0, (f.abonoFlete || 0) - montoUSD) >= (f.costoFlete || 0), transferenciaPendiente: true });
+        const nuevoAbono = Math.max(0, (pedido?.abonoFlete || 0) - montoUSD);
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoFlete: nuevoAbono, fletePagado: nuevoAbono >= (f.costoFlete||0), dineroStatus: f.clientePago ? "FANTASMA_PAGADO" : f.dineroStatus });
+        nd.gastosBodega = (nd.gastosBodega||[]).filter(g => !((g.concepto||"").includes(t.pedidoId) && g.categoria === "COBRO FLETE" && (g.concepto||"").includes("TRANS")));
       } else {
-        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoMercancia: Math.max(0, (f.abonoMercancia || 0) - montoUSD), clientePago: Math.max(0, (f.abonoMercancia || 0) - montoUSD) >= f.costoMercancia, clientePagoMonto: Math.max(0, (f.abonoMercancia || 0) - montoUSD), transferenciaPendiente: true });
+        const nuevoAbono = Math.max(0, (pedido?.abonoMercancia || 0) - montoUSD);
+        nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : { ...f, abonoMercancia: nuevoAbono, clientePago: false, clientePagoMonto: nuevoAbono, dineroStatus: "TRANS_PENDIENTE" });
+        nd.gastosBodega = (nd.gastosBodega||[]).filter(g => !((g.concepto||"").includes(t.pedidoId) && g.categoria === "COBRO FANTASMA" && (g.concepto||"").includes("TRANS")));
       }
       persist(nd);
     };
