@@ -4607,8 +4607,7 @@ export default function App() {
       const subTab = flujoSubTabApp; const setSubTab = setFlujoSubTabApp;
       const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
       const [gastoForm, setGastoForm] = usePersistedForm("gastoFormTJ", { concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
-    const [cobForm, setCobForm] = usePersistedForm("cobForm", { tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
-
+      const [cobForm, setCobForm] = usePersistedForm("cobForm", { tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
       const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
       const [cobSearch, setCobSearch] = useState("");
       const [editMov, setEditMov] = useState(null); // { fId, movId, monto, fecha, nota }
