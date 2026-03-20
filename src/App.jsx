@@ -781,8 +781,8 @@ export default function App() {
 
   // Cuando showNew está abierto, pausar los listeners para no interrumpir
   useEffect(() => {
-    formOpenRef.current = showNew || showColchon || showTransApp || !!editCell;
-  }, [showNew, showColchon, showTransApp]);
+    formOpenRef.current = showNew || showColchon || showTransApp || showMovApp || showAdelantoApp || showGastoApp || showCobroApp || showGastoUSAApp;
+  }, [showNew, showColchon, showTransApp, showMovApp, showAdelantoApp, showGastoApp, showCobroApp, showGastoUSAApp]);
 
   // ── Presence system ─────────────────────────────────────────────
   useEffect(() => {
