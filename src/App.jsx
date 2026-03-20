@@ -4769,7 +4769,7 @@ export default function App() {
 
           {/* Bitacora table */}
           <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 6 }}>{lista.length} pedido{lista.length!==1?"s":""}</div>
-          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "45vh" }}>
+          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: periodoTipo === "semana" ? "visible" : "auto", maxHeight: periodoTipo === "semana" ? "none" : "45vh" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
               <thead><tr>
                 <th onClick={() => toggle("id")} style={th}>Folio{arr("id")}</th>
@@ -4781,7 +4781,7 @@ export default function App() {
                 <th onClick={() => toggle(isMerc?"costoMercancia":"costoFlete")} style={{...th, color: isMerc?"#FCA5A5":"#93C5FD"}}>{isMerc?"👻 Costo":"🚛 Flete"}{arr(isMerc?"costoMercancia":"costoFlete")}</th>
                 <th style={th}>Pagó</th>
               </tr></thead>
-              <tbody>{lista.map((f, i) => {
+              <tbody>{(periodoTipo === "semana" ? lista : lista.slice(0,100)).map((f, i) => {
                 const td = { padding: "4px 8px", borderBottom: "1px solid #F3F4F6" };
                 const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
                 const monto = isMerc ? (f.totalVenta||f.costoMercancia) : (f.costoFlete||0);
@@ -4813,7 +4813,7 @@ export default function App() {
           {semMovs.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>📋 Movimientos del período ({semMovs.length})</div>
-              <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "30vh" }}>
+              <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", overflow: periodoTipo === "semana" ? "visible" : "auto", maxHeight: periodoTipo === "semana" ? "none" : "30vh" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
                   <thead><tr>
                     {["Fecha","Folio","Cliente","Concepto","Monto"].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#374151", color: "#fff", whiteSpace: "nowrap" }}>{h}</th>)}
@@ -4829,7 +4829,24 @@ export default function App() {
                       <td style={{ padding: "4px 6px", borderBottom: "1px solid #F3F4F6", textAlign: "center" }}>
                         <button onClick={async () => { if (!await showConfirm(`¿Eliminar pago?
 
-${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fantasmas.find(x => x.id === m.folio); if (!f) return; const newMovs = (f.movimientos||[]).filter(x => x.id !== m.id); const diff = m.montoUSD || m.monto || 0; let upd = {}; if ((m.concepto||"").includes("mercancía")) { const na = Math.max(0,(f.abonoMercancia||0)-diff); upd = { abonoMercancia: na, clientePago: false, movimientos: newMovs }; } else { const na = Math.max(0,(f.abonoFlete||0)-diff); upd = { abonoFlete: na, fletePagado: false, movimientos: newMovs }; } updF(m.folio, upd); }} style={{ background: "none", border: "none", color: "#D1D5DB", cursor: "pointer", padding: 2 }} onMouseEnter={e=>e.currentTarget.style.color="#DC2626"} onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}><I.Trash /></button>
+${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fantasmas.find(x => x.id === m.folio); if (!f) return;
+              const newMovs = (f.movimientos||[]).filter(x => x.id !== m.id);
+              const diff = m.montoUSD || m.monto || 0;
+              let upd = {};
+              if ((m.concepto||"").includes("mercancía")) {
+                const na = Math.max(0,(f.abonoMercancia||0)-diff);
+                upd = { abonoMercancia: na, clientePago: na >= (f.totalVenta||f.costoMercancia), movimientos: newMovs };
+              } else {
+                const na = Math.max(0,(f.abonoFlete||0)-diff);
+                upd = { abonoFlete: na, fletePagado: na >= (f.costoFlete||0), movimientos: newMovs };
+              }
+              // Also remove from gastosBodega
+              const nd = { ...data,
+                fantasmas: data.fantasmas.map(x => x.id !== m.folio ? x : { ...x, ...upd }),
+                gastosBodega: (data.gastosBodega||[]).filter(g => !(g.concepto||"").includes(m.folio) || !((g.categoria||"").includes("COBRO")))
+              };
+              // More precise: remove the specific gastosBodega entry by id proximity
+              persist(nd); }} style={{ background: "none", border: "none", color: "#D1D5DB", cursor: "pointer", padding: 2 }} onMouseEnter={e=>e.currentTarget.style.color="#DC2626"} onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}><I.Trash /></button>
                       </td>
                     </tr>
                   ))}</tbody>
