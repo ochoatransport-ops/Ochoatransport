@@ -670,7 +670,6 @@ export default function App() {
   const [bitEstado, setBitEstado] = useState("ALL");
     // Modal states lifted to App level to prevent closure on Firestore updates
   const [showMovApp, setShowMovApp] = useState(false);
-  const [movFormApp, setMovFormApp] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: "", nota: "", moneda: "USD", tipoCambio: "" });
   const [showAdelantoApp, setShowAdelantoApp] = useState(false);
   const [showGastoApp, setShowGastoApp] = useState(false);
   const [showCobroApp, setShowCobroApp] = useState(false);
@@ -5081,7 +5080,7 @@ export default function App() {
   const AdminEfectivo = () => {
     const [efMoneda, setEfMoneda] = useState("ALL");
     const showMov = showMovApp; const setShowMov = setShowMovApp;
-    const movForm = { ...movFormApp, fecha: movFormApp.fecha || today() }; const setMovForm = setMovFormApp;
+    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
