@@ -668,7 +668,7 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
 // ─── Persistent form state cache ─────────────────────────────────────────────
 // Components defined inside App() remount on every Firestore update.
 // This cache persists form data across remounts so users never lose what they typed.
-_cache = {};
+const _cache = {};
 const _modals = {};
 const useModalState = (key, initial = false) => {
   const [val, setVal] = useState(() => _modals[key] ?? initial);
