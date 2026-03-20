@@ -630,6 +630,24 @@ const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Moda
 
 // ============ TRANSFERENCIAS TJ (module-level) ============
 
+
+// ─── Persistent form state cache ─────────────────────────────────────────────
+// Components defined inside App() remount on every Firestore update.
+// This cache persists form data across remounts so users never lose what they typed.
+const _cache = {};
+const usePersistedForm = (key, initial) => {
+  const [val, setVal] = React.useState(() => _cache[key] ?? (typeof initial === 'function' ? initial() : initial));
+  const setter = React.useCallback((v) => {
+    setVal(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      _cache[key] = next;
+      return next;
+    });
+  }, [key]);
+  return [val, setter];
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [data, setData] = useState(init());
   const [loading, setLoading] = useState(true);
@@ -711,6 +729,8 @@ export default function App() {
   const [tjTab, setTjTab] = useState("recibir");
   const [atTab, setAtTab] = useState("pendientes");
   const [finTab, setFinTab] = useState("efectivo");
+  const [pagoTabApp, setPagoTabApp] = useState("mercancia");
+  const [flujoSubTabApp, setFlujoSubTabApp] = useState("clientes");
 
   // ── Global dialog system (replaces window.alert / window.confirm) ──
   const [dialog, setDialog] = useState(null);
@@ -2011,7 +2031,7 @@ export default function App() {
     const [cFiltro, setCFiltro] = useState("ALL"); // ALL, pendiente, pagado, moroso
     const [cSort, setCSort] = useState("saldo_desc"); // nombre_asc, nombre_desc, saldo_desc, saldo_asc, monto_desc, monto_asc
     const [pagoCliente, setPagoCliente] = useState(null);
-    const [pagoForm, setPagoForm] = useState({ fecha: today(), monto: "", nota: "", selected: {}, tipo: "merc" });
+    const [pagoForm, setPagoForm] = usePersistedForm("pagoForm", { fecha: today(), monto: "", nota: "", selected: {}, tipo: "merc" });
 
     const [showNewCliente, setShowNewCliente] = useState(false);
     const [showNewVendedor, setShowNewVendedor] = useState(false);
@@ -2459,7 +2479,7 @@ export default function App() {
     const [pFiltro, setPFiltro] = useState("ALL");
     const [pSort, setPSort] = useState("deuda_desc");
     const [pagoProv, setPagoProv] = useState(null);
-    const [pagoProvForm, setPagoProvForm] = useState({ fecha: today(), monto: "", nota: "", selected: {} });
+    const [pagoProvForm, setPagoProvForm] = usePersistedForm("pagoProvForm", { fecha: today(), monto: "", nota: "", selected: {} });
 
     const [showNewProv, setShowNewProv] = useState(false);
     const [editProv, setEditProv] = useState(null);
@@ -2768,7 +2788,7 @@ export default function App() {
   // ============ ENVÍOS / INVENTARIO ============
   const Envios = () => {
     const [showNewEnvio, setShowNewEnvio] = useState(false);
-    const [envioForm, setEnvioForm] = useState({ fecha: today(), vehiculo: "", notas: "", pedidos: {} });
+    const [envioForm, setEnvioForm] = usePersistedForm("envioForm", { fecha: today(), vehiculo: "", notas: "", pedidos: {} });
 
     const envios = data.envios || [];
 
@@ -3740,7 +3760,7 @@ export default function App() {
     // FlujoEfectivoUSA
     const FlujoEfectivoUSA = () => {
       const showGastoUSA = showGastoUSAApp; const setShowGastoUSA = setShowGastoUSAApp;
-    const [gastoUSAForm, setGastoUSAForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
+    const [gastoUSAForm, setGastoUSAForm] = usePersistedForm("gastoUSAForm", { concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
 
       const CATEGORIAS_USA = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "PROVEEDOR", "OTRO"];
 
@@ -4132,7 +4152,7 @@ export default function App() {
 
   // ============ BODEGA TJ (wrapper with sub-tabs) ============
   const BodegaTJ = () => {
-    const [pagoTab, setPagoTab] = useState("mercancia");
+    const pagoTab = pagoTabApp; const setPagoTab = setPagoTabApp;
     const tab = tjTab; const setTab = setTjTab;
     const enviosPend = data.fantasmas.filter(f => f.estado === "RECOLECTADO").length;
     const enBodegaCount = data.fantasmas.filter(f => f.estado === "BODEGA_TJ").length;
@@ -4337,7 +4357,7 @@ export default function App() {
       const [tjTransSearch, setTjTransSearch] = useState("");
       const showTrans = showTransApp; const setShowTrans = setShowTransApp;
       const [editId, setEditId] = useState(null);
-      const [tForm, setTForm] = useState({ pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
+      const [tForm, setTForm] = usePersistedForm("tForm", { pedidoId: "", pedSearch: "", montoMXN: "", tipoCambio: "", montoUSD: "", moneda: "MXN", cuenta: "", fecha: today(), nota: "", tipo: "flete" });
 
       const CUENTAS = [
         { id: "scotiabank", banco: "SCOTIABANK", titular: "Cinthia Jazmin Ramos Leon", tarjeta: "5579 2091 5461 3159", clabe: "044028256059014716", color: "#DC2626", uso: "flete", tag: "🚛 FLETES" },
@@ -4584,10 +4604,10 @@ export default function App() {
 
 
     const FlujoEfectivo = () => {
-      const [subTab, setSubTab] = useState("clientes");
+      const subTab = flujoSubTabApp; const setSubTab = setFlujoSubTabApp;
       const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
-      const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
-    const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
+      const [gastoForm, setGastoForm] = usePersistedForm("gastoFormTJ", { concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
+    const [cobForm, setCobForm] = usePersistedForm("cobForm", { tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
 
       const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
       const [cobSearch, setCobSearch] = useState("");
@@ -4741,11 +4761,15 @@ export default function App() {
                     </td>
                     <td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td>
                     <td style={td}><EC f={f} field={isMerc ? "costoMercancia" : "costoFlete"} numeric style={{ color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
-                    <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>
-                      {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
-                        : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(abono)}</span>
-                        : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
-                        : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>✅ PAGADO</span>
+                          : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>⚠️ {fmt(abono)}</span>
+                          : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>❓ POR DEFINIR</span>
+                          : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>❌ PENDIENTE</span>}
+                        <button onClick={(e) => { e.stopPropagation(); setCobForm({ ...cobForm, pedidoId: f.id, tipo: isMerc ? "mercancia" : "flete", fecha: today() }); setShowCobro(true); }} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 5, padding: "3px 7px", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>+ Pago</button>
+                        {(abono > 0 || pagado) && <button onClick={async (e) => { e.stopPropagation(); const movs = (f.movimientos||[]).filter(m => isMerc ? m.concepto?.includes("mercancía") : m.concepto?.includes("flete")); if (!movs.length) return; if (!await showConfirm(`¿Eliminar el último pago de ${f.cliente}?`)) return; const lastMov = movs[movs.length-1]; const newMovs = (f.movimientos||[]).filter(m => m.id !== lastMov.id); const na = isMerc ? Math.max(0,(f.abonoMercancia||0)-(lastMov.montoUSD||lastMov.monto||0)) : Math.max(0,(f.abonoFlete||0)-(lastMov.montoUSD||lastMov.monto||0)); const upd = isMerc ? { abonoMercancia: na, clientePago: false, movimientos: newMovs } : { abonoFlete: na, fletePagado: false, movimientos: newMovs }; updF(f.id, upd); }} style={{ background: "#F3F4F6", color: "#DC2626", border: "1px solid #FECACA", borderRadius: 5, padding: "3px 6px", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>✕</button>}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -5086,7 +5110,7 @@ export default function App() {
   const AdminEfectivo = () => {
     const [efMoneda, setEfMoneda] = useState("ALL");
     const showMov = showMovApp; const setShowMov = setShowMovApp;
-    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
+    const [movForm, setMovForm] = usePersistedForm("movForm", { tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
@@ -5573,9 +5597,9 @@ export default function App() {
     const showAdelanto = showAdelantoApp; const setShowAdelanto = setShowAdelantoApp;
     const [showRecuperar, setShowRecuperar] = useState(null);
     const [adelTab, setAdelTab] = useState("pendientes");
-    const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "" });
+    const [recForm, setRecForm] = usePersistedForm("recForm", { monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "" });
 
-    const [adelForm, setAdelForm] = useState({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
+    const [adelForm, setAdelForm] = usePersistedForm("adelForm", { pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
 
     const adelantos = data.adelantosAdmin || [];
     const adelantosPend = adelantos.filter(a => !a.recuperado);
