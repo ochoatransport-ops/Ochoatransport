@@ -636,8 +636,8 @@ const NewForm = ({ showNew, data, addF, role, setShowNew, today, fmt, fmtD, Moda
 // This cache persists form data across remounts so users never lose what they typed.
 const _cache = {};
 const usePersistedForm = (key, initial) => {
-  const [val, setVal] = React.useState(() => _cache[key] ?? (typeof initial === 'function' ? initial() : initial));
-  const setter = React.useCallback((v) => {
+  const [val, setVal] = useState(() => _cache[key] ?? (typeof initial === 'function' ? initial() : initial));
+  const setter = useCallback((v) => {
     setVal(prev => {
       const next = typeof v === 'function' ? v(prev) : v;
       _cache[key] = next;
