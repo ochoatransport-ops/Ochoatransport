@@ -668,10 +668,20 @@ export default function App() {
   const [bitPagoMerc, setBitPagoMerc] = useState("ALL");
   const [bitPagoFlete, setBitPagoFlete] = useState("ALL");
   const [bitEstado, setBitEstado] = useState("ALL");
-    // Modal states lifted to App level to prevent closure on Firestore updates
+    const [pagoFormApp, setPagoFormApp] = useState({ fecha: "", monto: "", nota: "", selected: {}, tipo: {} });
+  const [pagoProvFormApp, setPagoProvFormApp] = useState({ fecha: "", monto: "", nota: "", selected: {} });
+  const [provFormApp, setProvFormApp] = useState({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
+  const [envioFormApp, setEnvioFormApp] = useState({ fecha: "", vehiculo: "", notas: "", pedidos: {} });
+  const [gastoUSAFormApp, setGastoUSAFormApp] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: "", nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
+  const [cobFormApp, setCobFormApp] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: "", nota: "" });
+  const [recFormApp, setRecFormApp] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: "", nota: "", via: "transferencia" });
+  // Modal states lifted to App level to prevent closure on Firestore updates
   const [showMovApp, setShowMovApp] = useState(false);
+  const [movFormApp, setMovFormApp] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: "", nota: "", moneda: "USD", tipoCambio: "" });
   const [showAdelantoApp, setShowAdelantoApp] = useState(false);
+  const [adelFormApp, setAdelFormApp] = useState({ pedidoId: "", monto: "", fecha: "", nota: "" });
   const [showGastoApp, setShowGastoApp] = useState(false);
+  const [gastoFormApp, setGastoFormApp] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: "", nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
   const [showCobroApp, setShowCobroApp] = useState(false);
   const [showGastoUSAApp, setShowGastoUSAApp] = useState(false);
     const [showNew, setShowNew] = useState(false);
@@ -870,7 +880,7 @@ export default function App() {
     }, (err) => console.error("Realtime listener error:", err));
 
     const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 1000) return;
       const meta = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -888,7 +898,7 @@ export default function App() {
     });
 
     const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 1000) return;
       const fin = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -905,7 +915,7 @@ export default function App() {
     });
 
     const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 1000) return;
       setData(prev => {
         if (!prev) return prev;
         const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
@@ -915,7 +925,7 @@ export default function App() {
     });
 
     const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 3000) return;
+      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 1000) return;
       const c = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -2011,7 +2021,8 @@ export default function App() {
     const [cFiltro, setCFiltro] = useState("ALL"); // ALL, pendiente, pagado, moroso
     const [cSort, setCSort] = useState("saldo_desc"); // nombre_asc, nombre_desc, saldo_desc, saldo_asc, monto_desc, monto_asc
     const [pagoCliente, setPagoCliente] = useState(null);
-    const [pagoForm, setPagoForm] = useState({ fecha: today(), monto: "", nota: "", selected: {}, tipo: {} });
+    const pagoForm = pagoFormApp.fecha !== undefined ? pagoFormApp : { ...pagoFormApp, fecha: today() }; const setPagoForm = (v) => setPagoFormApp(typeof v === "function" ? v(pagoFormApp) : v);
+
     const [showNewCliente, setShowNewCliente] = useState(false);
     const [showNewVendedor, setShowNewVendedor] = useState(false);
     const [newName, setNewName] = useState("");
@@ -2374,7 +2385,7 @@ export default function App() {
                               <div style={{ fontSize: 10, color: "#9CA3AF" }}>{f.cantidad ? `Cant: ${f.cantidad} · Unit: ${fmt(f.costoUnitario)}` : "Mercancía"}</div>
                             )}
                           </div>
-                          <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeMerc)}</div>
+                          <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeMerc)}</div>
                         </label>
                       )}
                       {/* Flete row */}
@@ -2386,7 +2397,7 @@ export default function App() {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 12, fontWeight: 600 }}>🚛 {f.id} — Flete</div>
                           </div>
-                          <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeFlete)}</div>
+                          <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", fontSize: 13 }}>{fmt(debeFlete)}</div>
                         </label>
                       )}
                     </div>
@@ -2458,10 +2469,12 @@ export default function App() {
     const [pFiltro, setPFiltro] = useState("ALL");
     const [pSort, setPSort] = useState("deuda_desc");
     const [pagoProv, setPagoProv] = useState(null);
-    const [pagoProvForm, setPagoProvForm] = useState({ fecha: today(), monto: "", nota: "", selected: {} });
+    const pagoProvForm = pagoProvFormApp.fecha !== undefined ? pagoProvFormApp : { ...pagoProvFormApp, fecha: today() }; const setPagoProvForm = (v) => setPagoProvFormApp(typeof v === "function" ? v(pagoProvFormApp) : v);
+
     const [showNewProv, setShowNewProv] = useState(false);
     const [editProv, setEditProv] = useState(null);
-    const [provForm, setProvForm] = useState({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
+    const provForm = provFormApp.fecha !== undefined ? provFormApp : { ...provFormApp, fecha: today() }; const setProvForm = (v) => setProvFormApp(typeof v === "function" ? v(provFormApp) : v);
+
 
     const provInfo = data.proveedoresInfo || {}; // { provName: { ubicacion, telefono, contacto } }
 
@@ -2631,7 +2644,7 @@ export default function App() {
                               <span style={{ color: "#6B7280" }}>{f.cliente}</span>
                               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
                               <div style={{ textAlign: "right", minWidth: 80 }}>
-                                <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmt(debe)}</div>
+                                <div style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmt(debe)}</div>
                                 {(f.abonoProveedor || 0) > 0 && <div style={{ fontSize: 9, color: "#059669" }}>Abonado: {fmt(f.abonoProveedor)}</div>}
                               </div>
                             </div>
@@ -2722,7 +2735,7 @@ export default function App() {
                         <div style={{ fontSize: 12, fontWeight: 600 }}>{f.id} — {f.descripcion.length > 30 ? f.descripcion.slice(0, 30) + "..." : f.descripcion}</div>
                         <div style={{ fontSize: 10, color: "#9CA3AF" }}>{f.cliente}{f.cantidad ? ` · Cant: ${f.cantidad}` : ""}{f.creditoProveedor ? " · Crédito" : ""}</div>
                       </div>
-                      <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onClick={onUserActivity} style={{ fontFamily: "monospace", fontWeight: 700, color: "#7C3AED", fontSize: 13 }}>{fmt(debe)}</div>
+                      <div style={{ fontFamily: "monospace", fontWeight: 700, color: "#7C3AED", fontSize: 13 }}>{fmt(debe)}</div>
                     </label>
                   );
                 })}
@@ -2765,7 +2778,8 @@ export default function App() {
   // ============ ENVÍOS / INVENTARIO ============
   const Envios = () => {
     const [showNewEnvio, setShowNewEnvio] = useState(false);
-    const [envioForm, setEnvioForm] = useState({ fecha: today(), vehiculo: "", notas: "", pedidos: {} });
+    const envioForm = envioFormApp.fecha !== undefined ? envioFormApp : { ...envioFormApp, fecha: today() }; const setEnvioForm = (v) => setEnvioFormApp(typeof v === "function" ? v(envioFormApp) : v);
+
     const envios = data.envios || [];
 
     // Pedidos ready to ship (in BODEGA_USA)
@@ -3736,7 +3750,8 @@ export default function App() {
     // FlujoEfectivoUSA
     const FlujoEfectivoUSA = () => {
       const showGastoUSA = showGastoUSAApp; const setShowGastoUSA = setShowGastoUSAApp;
-      const [gastoUSAForm, setGastoUSAForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
+    const gastoUSAForm = gastoUSAFormApp.fecha !== undefined ? gastoUSAFormApp : { ...gastoUSAFormApp, fecha: today() }; const setGastoUSAForm = (v) => setGastoUSAFormApp(typeof v === "function" ? v(gastoUSAFormApp) : v);
+
       const CATEGORIAS_USA = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "PROVEEDOR", "OTRO"];
 
       const allGastosUSA = filterByDate(data.gastosUSA || [], "fecha");
@@ -4582,7 +4597,8 @@ export default function App() {
       const [subTab, setSubTab] = useState("clientes");
       const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
       const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
-      const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
+    const cobForm = cobFormApp.fecha !== undefined ? cobFormApp : { ...cobFormApp, fecha: today() }; const setCobForm = (v) => setCobFormApp(typeof v === "function" ? v(cobFormApp) : v);
+
       const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
       const [cobSearch, setCobSearch] = useState("");
       const [editMov, setEditMov] = useState(null); // { fId, movId, monto, fecha, nota }
@@ -5080,7 +5096,8 @@ export default function App() {
   const AdminEfectivo = () => {
     const [efMoneda, setEfMoneda] = useState("ALL");
     const showMov = showMovApp; const setShowMov = setShowMovApp;
-    const [movForm, setMovForm] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: today(), nota: "", moneda: "USD", tipoCambio: "" });
+    const movForm = movFormApp.fecha ? movFormApp : { ...movFormApp, fecha: today() };
+    const setMovForm = (v) => setMovFormApp(typeof v === "function" ? v(movFormApp) : v);
     const DESTINOS = [{ k: "ADMIN", l: "💼 Caja Admin", color: "#1A2744" }, { k: "BODEGA_USA", l: "🇺🇸 Bodega USA", color: "#2563EB" }, { k: "BODEGA_TJ", l: "🇲🇽 Bodega TJ", color: "#059669" }];
 
     const movs = filterByDate(data.gastosAdmin || [], "fecha");
@@ -5567,7 +5584,8 @@ export default function App() {
     const showAdelanto = showAdelantoApp; const setShowAdelanto = setShowAdelantoApp;
     const [showRecuperar, setShowRecuperar] = useState(null);
     const [adelTab, setAdelTab] = useState("pendientes");
-    const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "transferencia" });
+    const recForm = recFormApp.fecha !== undefined ? recFormApp : { ...recFormApp, fecha: today() }; const setRecForm = (v) => setRecFormApp(typeof v === "function" ? v(recFormApp) : v);
+
     const [adelForm, setAdelForm] = useState({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
 
     const adelantos = data.adelantosAdmin || [];
@@ -6665,7 +6683,7 @@ export default function App() {
 
   // ============ LAYOUT ============
   return (
-    <div style={{ minHeight: "100vh", background: "#F8F9FB", fontFamily: "'DM Sans', 'Segoe UI', -apple-system, sans-serif", color: "#111827" }}>
+    <div onMouseMove={onUserActivity} onKeyDown={onUserActivity} onTouchStart={onUserActivity} style={{ minHeight: "100vh", background: "#F8F9FB", fontFamily: "'DM Sans', 'Segoe UI', -apple-system, sans-serif", color: "#111827" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
       <header style={{ background: "#1A2744", color: "#fff", padding: "0 16px", display: "flex", alignItems: "center", height: 48, gap: 10, position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}>
         {/* Hamburger button - mobile */}
