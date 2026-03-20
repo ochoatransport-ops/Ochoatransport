@@ -4721,7 +4721,7 @@ export default function App() {
       const arr = (k) => sk===k?(sd===1?" ↑":" ↓"):"";
 
       // Week movements
-      const allMovs = data.fantasmas.flatMap(f => (f.movimientos||[]).filter(m => { const d = m.fecha||""; const r = getDateRange(); if (!r) return true; return d >= r.start.toISOString().slice(0,10) && d <= r.end.toISOString().slice(0,10); }).map(m => ({ ...m, cliente: f.cliente, folio: f.id, tipo_pago: isMerc ? (m.concepto||"").includes("mercancía") : (m.concepto||"").includes("flete") })));
+      const allMovs = data.fantasmas.flatMap(f => (f.movimientos||[]).filter(m => { const d = m.fecha||""; const r = getDateRange(); if (!r) return true; return d >= r.start && d <= r.end; }).map(m => ({ ...m, cliente: f.cliente, folio: f.id })));
       const semMovs = allMovs.filter(m => isMerc ? (m.concepto||"").includes("mercancía") : (m.concepto||"").includes("flete")).sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
 
       const pendCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)))).length;
