@@ -941,15 +941,18 @@ export default function App() {
         return;
       }
       // Sync dineroStatus
+      const PRESERVE_STATUS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
       d.fantasmas = d.fantasmas.map(f => {
+        // Never touch statuses that represent money in transit or already received
+        if (PRESERVE_STATUS.includes(f.dineroStatus)) return f;
         const mercPagado = f.clientePago;
         const fleteOk = f.fletePagado || f.soloRecoger;
         // Downgrade TODO_PAGADO if flete is not actually paid
         if (f.dineroStatus === "TODO_PAGADO" && mercPagado && !fleteOk) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
         if (f.dineroStatus === "TODO_PAGADO" && !mercPagado) return { ...f, dineroStatus: fleteOk ? "FLETE_PAGADO" : "SIN_FONDOS" };
         if (mercPagado && fleteOk && f.dineroStatus !== "TODO_PAGADO") return { ...f, dineroStatus: "TODO_PAGADO" };
-        if (mercPagado && !fleteOk && !["TODO_PAGADO","FANTASMA_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
-        if (!mercPagado && f.fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO","DINERO_USA","COLCHON_USADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
+        if (mercPagado && !fleteOk && !["TODO_PAGADO","FANTASMA_PAGADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
+        if (!mercPagado && f.fletePagado && f.costoFlete > 0 && !["TODO_PAGADO","FLETE_PAGADO"].includes(f.dineroStatus)) return { ...f, dineroStatus: "FLETE_PAGADO" };
         return f;
       });
       if ((d.nextId || 0) < 2800) d.nextId = 2800;
