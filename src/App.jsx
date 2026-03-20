@@ -4658,6 +4658,8 @@ export default function App() {
       const isMerc = pagoTab === "mercancia";
       const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
 
+      const clickTimer2 = useRef(null);
+      const goDelayed2 = (fn) => { if (clickTimer2.current) clearTimeout(clickTimer2.current); clickTimer2.current = setTimeout(fn, 220); };
       const startEdit = (e, f, field) => { e.stopPropagation(); if (clickTimer2.current) clearTimeout(clickTimer2.current); setEditCell({ id: f.id, field, val: String(f[field] ?? "") }); };
       const saveEdit = () => {
         if (!editCell) return;
