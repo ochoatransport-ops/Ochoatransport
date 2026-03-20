@@ -4647,12 +4647,18 @@ export default function App() {
       const [sk, setSk] = useState("id");
       const [sd, setSd] = useState(1);
       const [editCell, setEditCell] = useState(null);
+      const [showPagoModal, setShowPagoModal] = useState(false);
+      const [pagoSearch, setPagoSearch] = useState("");
+      const [pagoSel, setPagoSel] = useState(null); // { fId, tipo }
+      const [pagoMonto, setPagoMonto] = useState("");
+      const [pagoMotoMXN, setPagoMontoMXN] = useState("");
+      const [pagoTC, setPagoTC] = useState("");
+      const [pagoNota, setPagoNota] = useState("");
+      const [pagoFecha, setPagoFecha] = useState(today());
       const isMerc = pagoTab === "mercancia";
       const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
 
-      const clickTimer2 = useRef(null);
       const startEdit = (e, f, field) => { e.stopPropagation(); if (clickTimer2.current) clearTimeout(clickTimer2.current); setEditCell({ id: f.id, field, val: String(f[field] ?? "") }); };
-      const goDelayed2 = (fn) => { if (clickTimer2.current) clearTimeout(clickTimer2.current); clickTimer2.current = setTimeout(fn, 220); };
       const saveEdit = () => {
         if (!editCell) return;
         const f = data.fantasmas.find(x => x.id === editCell.id);
@@ -4672,38 +4678,67 @@ export default function App() {
         return <span onClick={e => e.stopPropagation()} onDoubleClick={e => startEdit(e, f, field)} title="Doble click para editar" style={{ cursor: "cell", display: "block", minHeight: 16, ...style }}>{f[field] ?? "—"}</span>;
       };
 
+      // Payment registration
+      const pendientesPago = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido))));
+      const pagoSearched = pagoSearch ? pendientesPago.filter(f => f.cliente.toLowerCase().includes(pagoSearch.toLowerCase()) || f.id.toLowerCase().includes(pagoSearch.toLowerCase()) || (f.proveedor||"").toLowerCase().includes(pagoSearch.toLowerCase())) : pendientesPago;
+
+      const registrarPago = () => {
+        if (!pagoSel) return;
+        const usd = parseFloat(pagoMonto) || 0;
+        const mxn = parseFloat(pagoMotoMXN) || 0;
+        const tc = parseFloat(pagoTC) || 0;
+        const mxnToUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
+        const totalUSD = usd + mxnToUsd;
+        if (totalUSD <= 0) return;
+        const f = data.fantasmas.find(x => x.id === pagoSel.fId);
+        if (!f) return;
+        const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnToUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + ");
+        const mov = { id: Date.now(), tipo: "Entrada", concepto: isMerc ? `👻 Pago mercancía — ${detalle}${pagoNota ? " — " + pagoNota : ""}` : `🚛 Pago flete — ${detalle}${pagoNota ? " — " + pagoNota : ""}`, monto: totalUSD, montoUSD: usd, montoMXN: mxn || null, tipoCambio: tc || null, fecha: pagoFecha };
+        let upd = {};
+        if (isMerc) { const na = (f.abonoMercancia||0)+totalUSD; upd = { abonoMercancia: na, clientePago: na >= (f.totalVenta||f.costoMercancia), clientePagoMonto: na }; }
+        else { const na = (f.abonoFlete||0)+totalUSD; upd = { abonoFlete: na, fletePagado: na >= (f.costoFlete||0) }; }
+        upd.movimientos = [...(f.movimientos||[]), mov];
+        upd.historial = [...(f.historial||[]), { fecha: pagoFecha, accion: `💰 Pago ${isMerc?"mercancía":"flete"}: ${fmt(totalUSD)} (${detalle})${pagoNota ? " — " + pagoNota : ""}`, quien: role }];
+        upd.fechaActualizacion = today();
+        let nd = { ...data, fantasmas: data.fantasmas.map(x => x.id !== pagoSel.fId ? x : { ...x, ...upd }) };
+        const label = isMerc ? "PAGO FANTASMA" : "PAGO FLETE";
+        if (usd > 0) nd.gastosBodega = [...(nd.gastosBodega||[]), { id: Date.now()+10, concepto: `${label} ${pagoSel.fId} (USD)`, monto: usd, moneda: "USD", categoria: isMerc?"COBRO FANTASMA":"COBRO FLETE", fecha: pagoFecha, nota: f.cliente, tipoMov: "ingreso" }];
+        if (mxn > 0) nd.gastosBodega = [...(nd.gastosBodega||[]), { id: Date.now()+11, concepto: `${label} ${pagoSel.fId} (MXN)`, monto: mxn, moneda: "MXN", categoria: isMerc?"COBRO FANTASMA":"COBRO FLETE", fecha: pagoFecha, nota: `${f.cliente} · @${tc} = ${fmt(mxnToUsd)} USD`, tipoMov: "ingreso" }];
+        persist(nd);
+        setPagoSel(null); setPagoMonto(""); setPagoMontoMXN(""); setPagoTC(""); setPagoNota(""); setPagoFecha(today());
+        if (pagoSearched.length <= 1) setShowPagoModal(false);
+      };
+
+      // Table data
       let lista = data.fantasmas.filter(f => f.estado !== "CERRADO");
       if (filtro === "pendientes") lista = lista.filter(f => isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)));
       if (filtro === "pagados") lista = lista.filter(f => isMerc ? f.clientePago : f.fletePagado);
-      if (busqueda) {
-        const s = busqueda.toLowerCase();
-        lista = lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion || "").toLowerCase().includes(s) || (f.proveedor || "").toLowerCase().includes(s));
-      }
-      lista = [...lista].sort((a, b) => {
-        const va = a[sk] || ""; const vb = b[sk] || "";
-        return typeof va === "number" ? (va - vb) * sd : String(va).localeCompare(String(vb)) * sd;
-      });
-      const toggle = (k) => { if (sk === k) setSd(d => -d); else { setSk(k); setSd(1); } };
-      const arr = (k) => sk === k ? (sd === 1 ? " ↑" : " ↓") : "";
+      if (busqueda) { const s = busqueda.toLowerCase(); lista = lista.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s)); }
+      lista = [...lista].sort((a, b) => { const va = a[sk]||""; const vb = b[sk]||""; return typeof va === "number" ? (va-vb)*sd : String(va).localeCompare(String(vb))*sd; });
+      const toggle = (k) => { if (sk===k) setSd(d=>-d); else { setSk(k); setSd(1); } };
+      const arr = (k) => sk===k?(sd===1?" ↑":" ↓"):"";
+
+      // Week movements
+      const allMovs = data.fantasmas.flatMap(f => (f.movimientos||[]).filter(m => { const d = m.fecha||""; const r = getDateRange(); if (!r) return true; return d >= r.start.toISOString().slice(0,10) && d <= r.end.toISOString().slice(0,10); }).map(m => ({ ...m, cliente: f.cliente, folio: f.id, tipo_pago: isMerc ? (m.concepto||"").includes("mercancía") : (m.concepto||"").includes("flete") })));
+      const semMovs = allMovs.filter(m => isMerc ? (m.concepto||"").includes("mercancía") : (m.concepto||"").includes("flete")).sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
 
       const pendCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && (f.costoFlete > 0 || f.fleteDesconocido)))).length;
       const pagCount = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).length;
-      const totalMerc = data.fantasmas.filter(f => f.estado !== "CERRADO").reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
-      const totalPag = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).reduce((s, f) => s + (isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0)), 0);
-      const totalPend = totalMerc - totalPag;
+      const totalPend = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? !f.clientePago : (!f.fletePagado && f.costoFlete > 0))).reduce((s,f) => s + (isMerc ? ((f.totalVenta||f.costoMercancia)-(f.abonoMercancia||0)) : ((f.costoFlete||0)-(f.abonoFlete||0))), 0);
+      const totalPag = data.fantasmas.filter(f => f.estado !== "CERRADO" && (isMerc ? f.clientePago : f.fletePagado)).reduce((s,f) => s + (isMerc ? (f.totalVenta||f.costoMercancia) : (f.costoFlete||0)), 0);
 
       const th = { padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#1A2744", color: "#fff", position: "sticky", top: 0, whiteSpace: "nowrap", cursor: "pointer" };
 
       return (
         <div>
-          {/* Stats */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          {/* Stats + Registrar Pago button */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "stretch" }}>
             <div style={{ flex: "1 1 100px", background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", border: "1px solid #E5E7EB" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280" }}>TOTAL {isMerc ? "MERCANCÍA" : "FLETE"}</div>
-              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{fmt(totalMerc)}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#6B7280" }}>TOTAL</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{fmt(totalPend + totalPag)}</div>
             </div>
             <div style={{ flex: "1 1 100px", background: "#ECFDF5", borderRadius: 8, padding: "10px 14px", border: "1px solid #A7F3D0" }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>RECIBIDO</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "#065F46" }}>COBRADO</div>
               <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#059669" }}>{fmt(totalPag)}</div>
               <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pagCount} pedidos</div>
             </div>
@@ -4712,7 +4747,11 @@ export default function App() {
               <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(totalPend)}</div>
               <div style={{ fontSize: 9, color: "#9CA3AF" }}>{pendCount} pedidos</div>
             </div>
+            <button onClick={() => { setShowPagoModal(true); setPagoSearch(""); setPagoSel(null); }} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 8, padding: "0 20px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+              💰 Registrar Pago
+            </button>
           </div>
+
           {/* Search + filter */}
           <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: "1 1 200px" }}>
@@ -4720,14 +4759,15 @@ export default function App() {
               <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
             </div>
             <div style={{ display: "flex", gap: 2, background: "#F3F4F6", borderRadius: 6, padding: 2 }}>
-              {[["todos","Todos"],["pendientes",`${isMerc?"👻":"🚛"} Pendientes (${pendCount})`],["pagados",`✅ Pagados (${pagCount})`]].map(([k,l]) => (
-                <button key={k} onClick={() => setFiltro(k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", background: filtro === k ? "#fff" : "transparent", boxShadow: filtro === k ? "0 1px 2px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 10, fontWeight: filtro === k ? 700 : 500, fontFamily: "inherit", color: filtro === k ? "#374151" : "#9CA3AF", whiteSpace: "nowrap" }}>{l}</button>
+              {[["todos","Todos"],["pendientes",`Pendientes (${pendCount})`],["pagados",`Pagados (${pagCount})`]].map(([k,l]) => (
+                <button key={k} onClick={() => setFiltro(k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", background: filtro===k?"#fff":"transparent", boxShadow: filtro===k?"0 1px 2px rgba(0,0,0,.1)":"none", cursor: "pointer", fontSize: 10, fontWeight: filtro===k?700:500, fontFamily: "inherit", color: filtro===k?"#374151":"#9CA3AF", whiteSpace: "nowrap" }}>{l}</button>
               ))}
             </div>
           </div>
-          {/* Table */}
-          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 6 }}>{lista.length} pedido{lista.length !== 1 ? "s" : ""}</div>
-          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "60vh" }}>
+
+          {/* Bitacora table */}
+          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 6 }}>{lista.length} pedido{lista.length!==1?"s":""}</div>
+          <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "45vh" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
               <thead><tr>
                 <th onClick={() => toggle("id")} style={th}>Folio{arr("id")}</th>
@@ -4736,45 +4776,123 @@ export default function App() {
                 <th style={th}>Mercancía</th>
                 <th style={th}>Empaque</th>
                 <th style={th}>Estado</th>
-                <th onClick={() => toggle(isMerc ? "costoMercancia" : "costoFlete")} style={{...th, color: isMerc ? "#FCA5A5" : "#93C5FD"}}>{isMerc ? "👻 Costo" : "🚛 Flete"}{arr(isMerc ? "costoMercancia" : "costoFlete")}</th>
+                <th onClick={() => toggle(isMerc?"costoMercancia":"costoFlete")} style={{...th, color: isMerc?"#FCA5A5":"#93C5FD"}}>{isMerc?"👻 Costo":"🚛 Flete"}{arr(isMerc?"costoMercancia":"costoFlete")}</th>
                 <th style={th}>Pagó</th>
               </tr></thead>
               <tbody>{lista.map((f, i) => {
                 const td = { padding: "4px 8px", borderBottom: "1px solid #F3F4F6" };
                 const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
-                const monto = isMerc ? (f.totalVenta || f.costoMercancia) : (f.costoFlete || 0);
-                const abono = isMerc ? (f.abonoMercancia || 0) : (f.abonoFlete || 0);
+                const monto = isMerc ? (f.totalVenta||f.costoMercancia) : (f.costoFlete||0);
+                const abono = isMerc ? (f.abonoMercancia||0) : (f.abonoFlete||0);
                 const pagado = isMerc ? f.clientePago : f.fletePagado;
                 const desconocido = isMerc ? f.costoDesconocido : f.fleteDesconocido;
                 return (
-                  <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
+                  <tr key={f.id} style={{ background: i%2===0?"#fff":"#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background=i%2===0?"#fff":"#FAFBFC"}>
                     <td onClick={() => goDelayed2(go)} style={{ ...td, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
                     <td style={{ ...td, color: "#D97706", fontWeight: 600 }}><EC f={f} field="proveedor" select={[...new Set(data.fantasmas.map(x=>x.proveedor).filter(Boolean))].sort()} /></td>
                     <td style={{ ...td, fontWeight: 600 }}><EC f={f} field="cliente" select={[...new Set([...(data.clientes||[]),...data.fantasmas.map(x=>x.cliente).filter(Boolean)])].sort()} /></td>
                     <td style={{ ...td, maxWidth: 130 }}><EC f={f} field="descripcion" /></td>
-                    <td style={td}>
-                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                        <EC f={f} field="cantBultos" numeric style={{ width: 30 }} />
-                        <EC f={f} field="empaque" select={EMPAQUES} />
-                      </div>
-                    </td>
+                    <td style={td}><div style={{ display: "flex", gap: 4, alignItems: "center" }}><EC f={f} field="cantBultos" numeric style={{ width: 30 }} /><EC f={f} field="empaque" select={EMPAQUES} /></div></td>
                     <td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td>
-                    <td style={td}><EC f={f} field={isMerc ? "costoMercancia" : "costoFlete"} numeric style={{ color: desconocido ? "#D97706" : isMerc ? "#DC2626" : "#2563EB", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
-                    <td style={{ ...td, textAlign: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>✅ PAGADO</span>
-                          : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>⚠️ {fmt(abono)}</span>
-                          : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>❓ POR DEFINIR</span>
-                          : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>❌ PENDIENTE</span>}
-                        <button onClick={(e) => { e.stopPropagation(); setCobForm({ ...cobForm, pedidoId: f.id, tipo: isMerc ? "mercancia" : "flete", fecha: today() }); setShowCobro(true); }} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 5, padding: "3px 7px", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>+ Pago</button>
-                        {(abono > 0 || pagado) && <button onClick={async (e) => { e.stopPropagation(); const movs = (f.movimientos||[]).filter(m => isMerc ? m.concepto?.includes("mercancía") : m.concepto?.includes("flete")); if (!movs.length) return; if (!await showConfirm(`¿Eliminar el último pago de ${f.cliente}?`)) return; const lastMov = movs[movs.length-1]; const newMovs = (f.movimientos||[]).filter(m => m.id !== lastMov.id); const na = isMerc ? Math.max(0,(f.abonoMercancia||0)-(lastMov.montoUSD||lastMov.monto||0)) : Math.max(0,(f.abonoFlete||0)-(lastMov.montoUSD||lastMov.monto||0)); const upd = isMerc ? { abonoMercancia: na, clientePago: false, movimientos: newMovs } : { abonoFlete: na, fletePagado: false, movimientos: newMovs }; updF(f.id, upd); }} style={{ background: "#F3F4F6", color: "#DC2626", border: "1px solid #FECACA", borderRadius: 5, padding: "3px 6px", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>✕</button>}
-                      </div>
+                    <td style={td}><EC f={f} field={isMerc?"costoMercancia":"costoFlete"} numeric style={{ color: desconocido?"#D97706":isMerc?"#DC2626":"#2563EB", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
+                    <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>
+                      {pagado ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>✅ PAGADO</span>
+                        : abono > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>⚠️ {fmt(abono)}</span>
+                        : desconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700 }}>❓ POR DEFINIR</span>
+                        : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>❌ PENDIENTE</span>}
                     </td>
                   </tr>
                 );
               })}</tbody>
             </table>
           </div>
+
+          {/* Week movements */}
+          {semMovs.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>📋 Movimientos del período ({semMovs.length})</div>
+              <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "30vh" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+                  <thead><tr>
+                    {["Fecha","Folio","Cliente","Concepto","Monto"].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "#374151", color: "#fff", whiteSpace: "nowrap" }}>{h}</th>)}
+                    <th style={{ padding: "6px 8px", background: "#374151", width: 30 }}></th>
+                  </tr></thead>
+                  <tbody>{semMovs.map((m, i) => (
+                    <tr key={m.id} style={{ background: i%2===0?"#fff":"#FAFBFC" }}>
+                      <td style={{ padding: "6px 8px", borderBottom: "1px solid #F3F4F6", color: "#6B7280", whiteSpace: "nowrap" }}>{m.fecha}</td>
+                      <td style={{ padding: "6px 8px", borderBottom: "1px solid #F3F4F6", fontFamily: "monospace", fontSize: 10, color: "#1A2744" }}>{m.folio}</td>
+                      <td style={{ padding: "6px 8px", borderBottom: "1px solid #F3F4F6", fontWeight: 600 }}>{m.cliente}</td>
+                      <td style={{ padding: "6px 8px", borderBottom: "1px solid #F3F4F6", color: "#6B7280", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}</td>
+                      <td style={{ padding: "6px 8px", borderBottom: "1px solid #F3F4F6", fontFamily: "monospace", fontWeight: 700, color: "#059669", textAlign: "right" }}>{fmt(m.monto)}</td>
+                      <td style={{ padding: "4px 6px", borderBottom: "1px solid #F3F4F6", textAlign: "center" }}>
+                        <button onClick={async () => { if (!await showConfirm(`¿Eliminar pago?
+
+${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fantasmas.find(x => x.id === m.folio); if (!f) return; const newMovs = (f.movimientos||[]).filter(x => x.id !== m.id); const diff = m.montoUSD || m.monto || 0; let upd = {}; if ((m.concepto||"").includes("mercancía")) { const na = Math.max(0,(f.abonoMercancia||0)-diff); upd = { abonoMercancia: na, clientePago: false, movimientos: newMovs }; } else { const na = Math.max(0,(f.abonoFlete||0)-diff); upd = { abonoFlete: na, fletePagado: false, movimientos: newMovs }; } updF(m.folio, upd); }} style={{ background: "none", border: "none", color: "#D1D5DB", cursor: "pointer", padding: 2 }} onMouseEnter={e=>e.currentTarget.style.color="#DC2626"} onMouseLeave={e=>e.currentTarget.style.color="#D1D5DB"}><I.Trash /></button>
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Pago Modal */}
+          {showPagoModal && (
+            <Modal title={`💰 Registrar pago — ${isMerc ? "👻 Mercancía" : "🚛 Flete"}`} onClose={() => setShowPagoModal(false)} w={500}>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Buscar pedido pendiente</div>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+                  <input autoFocus value={pagoSearch} onChange={e => { setPagoSearch(e.target.value); setPagoSel(null); }} placeholder="Folio, cliente, proveedor..." style={{ width: "100%", padding: "8px 10px 8px 28px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+                </div>
+                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
+                  {pagoSearched.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pendientes</div>}
+                  {pagoSearched.map(f => {
+                    const debe = isMerc ? ((f.totalVenta||f.costoMercancia)-(f.abonoMercancia||0)) : ((f.costoFlete||0)-(f.abonoFlete||0));
+                    const sel = pagoSel?.fId === f.id;
+                    return (
+                      <div key={f.id} onClick={() => { setPagoSel({ fId: f.id }); setPagoMonto(String(debe > 0 ? debe : "")); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: sel ? "#EFF6FF" : "#fff", borderBottom: "1px solid #F3F4F6", cursor: "pointer", borderLeft: sel ? "3px solid #2563EB" : "3px solid transparent" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span style={{ fontSize: 10, fontFamily: "monospace", color: "#6B7280" }}>{f.id}</span>
+                            <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                            {f.proveedor && <span style={{ fontSize: 10, color: "#D97706" }}>{f.proveedor}</span>}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "#DC2626" }}>{fmt(debe > 0 ? debe : (isMerc ? f.costoMercancia : f.costoFlete))}</div>
+                          {(isMerc ? f.abonoMercancia : f.abonoFlete) > 0 && <div style={{ fontSize: 9, color: "#D97706" }}>Abono: {fmt(isMerc ? f.abonoMercancia : f.abonoFlete)}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {pagoSel && (() => {
+                const f = data.fantasmas.find(x => x.id === pagoSel.fId);
+                const debe = f ? (isMerc ? ((f.totalVenta||f.costoMercancia)-(f.abonoMercancia||0)) : ((f.costoFlete||0)-(f.abonoFlete||0))) : 0;
+                return (
+                  <div style={{ borderTop: "1px solid #E5E7EB", paddingTop: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Registrar pago para <strong>{f?.cliente}</strong> — Debe: <span style={{ color: "#DC2626", fontFamily: "monospace" }}>{fmt(debe)}</span></div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <Fld label="Monto USD"><Inp type="number" value={pagoMonto} onChange={e => setPagoMonto(e.target.value)} placeholder="0.00" /></Fld>
+                      <Fld label="Monto MXN"><Inp type="number" value={pagoMotoMXN} onChange={e => setPagoMontoMXN(e.target.value)} placeholder="0.00" /></Fld>
+                      <Fld label="T/C"><Inp type="number" value={pagoTC} onChange={e => setPagoTC(e.target.value)} placeholder="17.50" /></Fld>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                      <Fld label="Fecha"><Inp type="date" value={pagoFecha} onChange={e => setPagoFecha(e.target.value)} /></Fld>
+                      <Fld label="Nota"><Inp value={pagoNota} onChange={e => setPagoNota(e.target.value)} placeholder="Efectivo, transferencia..." /></Fld>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                      <Btn v="secondary" onClick={() => setPagoSel(null)}>Cancelar</Btn>
+                      <Btn disabled={!(parseFloat(pagoMonto)>0) && !(parseFloat(pagoMotoMXN)>0)} onClick={registrarPago} style={{ background: "#059669" }}>💰 Registrar</Btn>
+                    </div>
+                  </div>
+                );
+              })()}
+            </Modal>
+          )}
         </div>
       );
     };
