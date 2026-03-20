@@ -668,20 +668,10 @@ export default function App() {
   const [bitPagoMerc, setBitPagoMerc] = useState("ALL");
   const [bitPagoFlete, setBitPagoFlete] = useState("ALL");
   const [bitEstado, setBitEstado] = useState("ALL");
-    const [pagoFormApp, setPagoFormApp] = useState({ fecha: "", monto: "", nota: "", selected: {}, tipo: {} });
-  const [pagoProvFormApp, setPagoProvFormApp] = useState({ fecha: "", monto: "", nota: "", selected: {} });
-  const [provFormApp, setProvFormApp] = useState({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
-  const [envioFormApp, setEnvioFormApp] = useState({ fecha: "", vehiculo: "", notas: "", pedidos: {} });
-  const [gastoUSAFormApp, setGastoUSAFormApp] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: "", nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
-  const [cobFormApp, setCobFormApp] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: "", nota: "" });
-  const [recFormApp, setRecFormApp] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: "", nota: "", via: "transferencia" });
-  // Modal states lifted to App level to prevent closure on Firestore updates
+    // Modal states lifted to App level to prevent closure on Firestore updates
   const [showMovApp, setShowMovApp] = useState(false);
-  const [movFormApp, setMovFormApp] = useState({ tipo: "ingreso", destino: "ADMIN", concepto: "", monto: "", montoUSD: "", montoMXN: "", fecha: "", nota: "", moneda: "USD", tipoCambio: "" });
   const [showAdelantoApp, setShowAdelantoApp] = useState(false);
-  const [adelFormApp, setAdelFormApp] = useState({ pedidoId: "", monto: "", fecha: "", nota: "" });
   const [showGastoApp, setShowGastoApp] = useState(false);
-  const [gastoFormApp, setGastoFormApp] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: "", nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
   const [showCobroApp, setShowCobroApp] = useState(false);
   const [showGastoUSAApp, setShowGastoUSAApp] = useState(false);
     const [showNew, setShowNew] = useState(false);
@@ -2021,7 +2011,7 @@ export default function App() {
     const [cFiltro, setCFiltro] = useState("ALL"); // ALL, pendiente, pagado, moroso
     const [cSort, setCSort] = useState("saldo_desc"); // nombre_asc, nombre_desc, saldo_desc, saldo_asc, monto_desc, monto_asc
     const [pagoCliente, setPagoCliente] = useState(null);
-    const pagoForm = pagoFormApp.fecha !== undefined ? pagoFormApp : { ...pagoFormApp, fecha: today() }; const setPagoForm = (v) => setPagoFormApp(typeof v === "function" ? v(pagoFormApp) : v);
+    const [pagoForm, setPagoForm] = useState({ fecha: today(), monto: "", nota: "", selected: {}, tipo: "merc" });
 
     const [showNewCliente, setShowNewCliente] = useState(false);
     const [showNewVendedor, setShowNewVendedor] = useState(false);
@@ -2469,11 +2459,11 @@ export default function App() {
     const [pFiltro, setPFiltro] = useState("ALL");
     const [pSort, setPSort] = useState("deuda_desc");
     const [pagoProv, setPagoProv] = useState(null);
-    const pagoProvForm = pagoProvFormApp.fecha !== undefined ? pagoProvFormApp : { ...pagoProvFormApp, fecha: today() }; const setPagoProvForm = (v) => setPagoProvFormApp(typeof v === "function" ? v(pagoProvFormApp) : v);
+    const [pagoProvForm, setPagoProvForm] = useState({ fecha: today(), monto: "", nota: "", selected: {} });
 
     const [showNewProv, setShowNewProv] = useState(false);
     const [editProv, setEditProv] = useState(null);
-    const provForm = provFormApp.fecha !== undefined ? provFormApp : { ...provFormApp, fecha: today() }; const setProvForm = (v) => setProvFormApp(typeof v === "function" ? v(provFormApp) : v);
+    const [provForm, setProvForm] = useState({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
 
 
     const provInfo = data.proveedoresInfo || {}; // { provName: { ubicacion, telefono, contacto } }
@@ -2778,7 +2768,7 @@ export default function App() {
   // ============ ENVÍOS / INVENTARIO ============
   const Envios = () => {
     const [showNewEnvio, setShowNewEnvio] = useState(false);
-    const envioForm = envioFormApp.fecha !== undefined ? envioFormApp : { ...envioFormApp, fecha: today() }; const setEnvioForm = (v) => setEnvioFormApp(typeof v === "function" ? v(envioFormApp) : v);
+    const [envioForm, setEnvioForm] = useState({ fecha: today(), vehiculo: "", notas: "", pedidos: {} });
 
     const envios = data.envios || [];
 
@@ -3750,7 +3740,7 @@ export default function App() {
     // FlujoEfectivoUSA
     const FlujoEfectivoUSA = () => {
       const showGastoUSA = showGastoUSAApp; const setShowGastoUSA = setShowGastoUSAApp;
-    const gastoUSAForm = gastoUSAFormApp.fecha !== undefined ? gastoUSAFormApp : { ...gastoUSAFormApp, fecha: today() }; const setGastoUSAForm = (v) => setGastoUSAFormApp(typeof v === "function" ? v(gastoUSAFormApp) : v);
+    const [gastoUSAForm, setGastoUSAForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "", tipoMov: "gasto", moneda: "USD", tipoCambio: "" });
 
       const CATEGORIAS_USA = ["OPERACIÓN", "GASOLINA", "COMIDA", "RENTA", "LUZ/AGUA", "MANTENIMIENTO", "SUELDOS", "MATERIALES", "PROVEEDOR", "OTRO"];
 
@@ -4123,7 +4113,7 @@ export default function App() {
             )}
           </div>
         )}
-        {tab === "efectivo" && <FlujoEfectivoUSA />}
+        <div style={{ display: tab === "efectivo" ? "block" : "none" }}><FlujoEfectivoUSA /></div>
         {tab === "colchon" && <ColchonTab />}
         {confirm && (() => { const cf = data.fantasmas.find(x => x.id === confirm); return cf ? (
           <Modal title="Eliminar pedido" onClose={() => setConfirm(null)} w={380}>
@@ -4597,7 +4587,7 @@ export default function App() {
       const [subTab, setSubTab] = useState("clientes");
       const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
       const [gastoForm, setGastoForm] = useState({ concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
-    const cobForm = cobFormApp.fecha !== undefined ? cobFormApp : { ...cobFormApp, fecha: today() }; const setCobForm = (v) => setCobFormApp(typeof v === "function" ? v(cobFormApp) : v);
+    const [cobForm, setCobForm] = useState({ tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
 
       const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
       const [cobSearch, setCobSearch] = useState("");
@@ -5086,8 +5076,8 @@ export default function App() {
         {tab === "recibir" && <RecibirTJ />}
 
         {tab === "entregados" && <EntregadosTJ />}
-        {tab === "efectivo" && <FlujoEfectivo />}
-        {tab === "transferencias" && <TransferenciasTJ />}
+        <div style={{ display: tab === "efectivo" ? "block" : "none" }}><FlujoEfectivo /></div>
+        <div style={{ display: tab === "transferencias" ? "block" : "none" }}><TransferenciasTJ /></div>
       </div>
     );
   };
@@ -5584,7 +5574,7 @@ export default function App() {
     const showAdelanto = showAdelantoApp; const setShowAdelanto = setShowAdelantoApp;
     const [showRecuperar, setShowRecuperar] = useState(null);
     const [adelTab, setAdelTab] = useState("pendientes");
-    const recForm = recFormApp.fecha !== undefined ? recFormApp : { ...recFormApp, fecha: today() }; const setRecForm = (v) => setRecFormApp(typeof v === "function" ? v(recFormApp) : v);
+    const [recForm, setRecForm] = useState({ monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "" });
 
     const [adelForm, setAdelForm] = useState({ pedidoId: "", monto: "", fecha: today(), nota: "", pedSearch: "" });
 
@@ -6532,9 +6522,9 @@ export default function App() {
             ))}
           </div>
         </div>
-        {finTab === "efectivo" && <AdminEfectivo />}
-        {finTab === "transferencias" && <AdminTransferencias />}
-        {finTab === "adelantos" && <AdminAdelantos />}
+        <div style={{ display: finTab === "efectivo" ? "block" : "none" }}><AdminEfectivo /></div>
+        <div style={{ display: finTab === "transferencias" ? "block" : "none" }}><AdminTransferencias /></div>
+        <div style={{ display: finTab === "adelantos" ? "block" : "none" }}><AdminAdelantos /></div>
         {finTab === "ganancias" && (() => {
           // Todos los pedidos especiales activos (no cerrados, no separados)
           const todosEspeciales = data.fantasmas.filter(f => f.pedidoEspecial && !f.gananciaSeparada && f.estado !== "CERRADO");
@@ -6799,11 +6789,11 @@ export default function App() {
         {view === "bodegatj" && <BodegaTJ />}
         {view === "bitacora" && <Bitacora />}
         {view === "finanzas" && <AdminFinanzas />}
-        {view === "cuentas" && <CuentasPage />}
-        {view === "envios" && <Envios />}
+        <div style={{ display: view === "cuentas" ? "block" : "none" }}><CuentasPage /></div>
+        <div style={{ display: view === "envios" ? "block" : "none" }}><Envios /></div>
         {view === "recoleccion" && <Recoleccion />}
-        {view === "clientes" && <Clientes />}
-        {view === "proveedores" && <Proveedores />}
+        <div style={{ display: view === "clientes" ? "block" : "none" }}><Clientes /></div>
+        <div style={{ display: view === "proveedores" ? "block" : "none" }}><Proveedores /></div>
       </main>
       <NewForm showNew={showNew} data={data} addF={addF} role={role} setShowNew={setShowNew} today={today} fmt={fmt} fmtD={fmtD} Modal={Modal} Btn={Btn} Fld={Fld} Inp={Inp} AutoInp={AutoInp} I={I} navigate={navigate} TIPOS_MERCANCIA={TIPOS_MERCANCIA} />
       {showColchon && <ColchonModal />}
