@@ -846,7 +846,34 @@ export default function App() {
   const formOpenRef = useRef(false);
   const lastActivityRef = useRef(0);
   // Track user activity — pause listeners for 3s after any interaction
-  const onUserActivity = () => { lastActivityRef.current = Date.now(); };
+  const inputFocusedRef = useRef(false);
+  const _activityThrottle = useRef(0);
+  const onUserActivity = () => {
+    const now = Date.now();
+    if (now - _activityThrottle.current > 500) {
+      lastActivityRef.current = now;
+      _activityThrottle.current = now;
+    }
+  };
+  // Register focus listeners once on mount only
+  useEffect(() => {
+    const onFocusIn = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        inputFocusedRef.current = true;
+        lastActivityRef.current = Date.now();
+      }
+    };
+    const onFocusOut = () => {
+      inputFocusedRef.current = false;
+      lastActivityRef.current = Date.now();
+    };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
+  }, []);
   const [onlineUsers, setOnlineUsers] = useState([]);
 
   // Cuando showNew está abierto, pausar los listeners para no interrumpir
@@ -880,7 +907,11 @@ export default function App() {
       const active = snap.docs
         .map(d => d.data())
         .filter(u => u.online && u.user !== currentUser && (now - (u.lastSeen || 0)) < 90000);
-      setOnlineUsers(active);
+      setOnlineUsers(prev => {
+        const prevSig = prev.map(u => u.user).sort().join(',');
+        const newSig = active.map(u => u.user).sort().join(',');
+        return prevSig === newSig ? prev : active; // Only re-render if users changed
+      });
     });
 
     return () => {
@@ -929,7 +960,7 @@ export default function App() {
 
     // Real-time listener — syncs fantasmas changes from other users instantly
     const unsubFantasmas = onSnapshot(collection(db, "fantasmas"), (snap) => {
-      if (formOpenRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const remoteFantasmas = snap.docs.map(d => d.data());
       setData(prev => {
         if (!prev) return prev;
@@ -946,7 +977,7 @@ export default function App() {
     }, (err) => console.error("Realtime listener error:", err));
 
     const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const meta = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -964,10 +995,14 @@ export default function App() {
     });
 
     const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const fin = snap.data();
       setData(prev => {
         if (!prev) return prev;
+        // Skip if finanzas hasn't changed
+        const finSig = (fin.adelantosAdmin||[]).length + '_' + (fin.gastosAdmin||[]).length + '_' + (fin.transferencias||[]).length;
+        const prevSig = (prev.adelantosAdmin||[]).length + '_' + (prev.gastosAdmin||[]).length + '_' + (prev.transferencias||[]).length;
+        if (finSig === prevSig && JSON.stringify(fin.fondos) === JSON.stringify(prev.fondos)) return prev;
         const updated = { ...prev,
           gastosAdmin: fin.gastosAdmin ?? prev.gastosAdmin,
           gastosUSA: fin.gastosUSA ?? prev.gastosUSA,
@@ -981,7 +1016,7 @@ export default function App() {
     });
 
     const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       setData(prev => {
         if (!prev) return prev;
         const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
@@ -991,7 +1026,7 @@ export default function App() {
     });
 
     const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const c = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -5625,8 +5660,8 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                       })()}
                       <EfCell m={m} field="nota" style={{ fontSize: 9, color: "#9CA3AF" }} />
                     </div>
-                    <div><EfCell m={m} field={isMXN ? "monto" : "montoUSD"} type="number" style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }} /></div>
-                    <div><EfCell m={m} field={isMXN ? "monto" : "montoMXN"} type="number" style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#D97706" : "#DC2626" }} /></div>
+                    <div>{!isMXN && <EfCell m={m} field="montoUSD" type="number" style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#059669" : "#DC2626" }} />}</div>
+                    <div>{isMXN && <EfCell m={m} field="monto" type="number" style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: isIng ? "#D97706" : "#DC2626" }} />}</div>
                     <div><button onClick={() => eliminarMov(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></div>
                   </div>
                 );
@@ -6092,34 +6127,57 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
           const adel = adelantos.find(a => a.id === showRecuperar);
           if (!adel) return null;
           const pf = data.fantasmas.find(x => x.id === adel.pedidoId);
+          // Check if client has actually paid (via Bodega TJ or confirmed transfer)
+          const clientePagoBodega = pf?.clientePago || false;
+          const transConfirmada = (data.transferencias || []).some(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma");
+          const puedeCobrarse = clientePagoBodega || transConfirmada;
           return (
             <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={440}>
               <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
                 <strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"} · <span style={{ color: "#D97706", fontWeight: 700 }}>Adelantado: {fmt(adel.monto)}</span>
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿Cómo te lo pagó el cliente?</div>
-              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-                {[["transferencia", "🏦 Transferencia"], ["adolfo", "👤 Le pagó a Adolfo"], ["efectivo", "💵 Efectivo"]].map(([v, l]) => (
-                  <button key={v} onClick={() => setRecForm({ ...recForm, via: v })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: recForm.via === v ? `2px solid ${VIA_COLORS[v]}` : "1px solid #E5E7EB", background: recForm.via === v ? "#F0FDF4" : "#fff", color: recForm.via === v ? VIA_COLORS[v] : "#6B7280", fontWeight: recForm.via === v ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>{l}</button>
-                ))}
-              </div>
-              {recForm.via === "adolfo" && <div style={{ background: "#F5F3FF", borderRadius: 6, padding: "8px 12px", border: "1px solid #E9D5FF", marginBottom: 10, fontSize: 11, color: "#6D28D9" }}>👤 El cliente le pagó a Adolfo en Bodega TJ, y Adolfo te lo entregó a ti.</div>}
-              <div style={{ display: "flex", gap: 8 }}>
-                <Fld label="🇺🇸 USD recibido"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
-                <Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld>
-              </div>
-              <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>🇲🇽 ¿También pagó en pesos? (opcional)</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Fld label="MXN"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
-                  <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+              {!puedeCobrarse ? (
+                <div style={{ background: "#FEF2F2", borderRadius: 8, padding: "14px 16px", border: "1px solid #FECACA", marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>⛔ No puedes cobrar este adelanto todavía</div>
+                  <div style={{ fontSize: 11, color: "#7F1D1D", marginBottom: 8 }}>El cliente aún no ha pagado la mercancía de este pedido. Para marcar el adelanto como cobrado necesitas:</div>
+                  <div style={{ fontSize: 11, color: "#991B1B" }}>
+                    <div style={{ marginBottom: 4 }}>• Que Adolfo registre el pago del cliente en <strong>Bodega TJ → Pagos Clientes</strong></div>
+                    <div>• O que confirmes una <strong>transferencia</strong> de la mercancía de este pedido en Transferencias</div>
+                  </div>
+                  <div style={{ marginTop: 10, padding: "6px 10px", background: "#FEE2E2", borderRadius: 6, fontSize: 10, color: "#991B1B" }}>
+                    Estado actual: {pf ? <DBadge status={pf.dineroStatus || "SIN_FONDOS"} /> : "—"}
+                  </div>
                 </div>
-                {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}
-              </div>
-              <Fld label="Nota (opcional)"><Inp value={recForm.nota} onChange={e => setRecForm({ ...recForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
+              ) : (
+                <>
+                  <div style={{ background: "#ECFDF5", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #A7F3D0", fontSize: 11, color: "#065F46", fontWeight: 600 }}>
+                    ✅ {transConfirmada ? "Transferencia confirmada" : "Pago registrado en Bodega TJ"} — puedes cobrar el adelanto
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿Cómo te lo pagó el cliente?</div>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                    {[["transferencia", "🏦 Transferencia"], ["adolfo", "👤 Le pagó a Adolfo"], ["efectivo", "💵 Efectivo"]].map(([v, l]) => (
+                      <button key={v} onClick={() => setRecForm({ ...recForm, via: v })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: recForm.via === v ? `2px solid ${VIA_COLORS[v]}` : "1px solid #E5E7EB", background: recForm.via === v ? "#F0FDF4" : "#fff", color: recForm.via === v ? VIA_COLORS[v] : "#6B7280", fontWeight: recForm.via === v ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>{l}</button>
+                    ))}
+                  </div>
+                  {recForm.via === "adolfo" && <div style={{ background: "#F5F3FF", borderRadius: 6, padding: "8px 12px", border: "1px solid #E9D5FF", marginBottom: 10, fontSize: 11, color: "#6D28D9" }}>👤 El cliente le pagó a Adolfo en Bodega TJ, y Adolfo te lo entregó a ti.</div>}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Fld label="🇺🇸 USD recibido"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
+                    <Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld>
+                  </div>
+                  <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>🇲🇽 ¿También pagó en pesos? (opcional)</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Fld label="MXN"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
+                      <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+                    </div>
+                    {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}
+                  </div>
+                  <Fld label="Nota (opcional)"><Inp value={recForm.nota} onChange={e => setRecForm({ ...recForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
+                </>
+              )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
                 <Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn>
-                <Btn disabled={!(parseFloat(recForm.monto) > 0 || parseFloat(recForm.montoMXN) > 0)} onClick={() => {
+                {puedeCobrarse && <Btn disabled={!(parseFloat(recForm.monto) > 0 || parseFloat(recForm.montoMXN) > 0)} onClick={() => {
                   const usd = parseFloat(recForm.monto) || 0;
                   const mxn = parseFloat(recForm.montoMXN) || 0;
                   const tc = parseFloat(recForm.tipoCambio) || 0;
@@ -6127,13 +6185,13 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                   const total = usd + mxnUsd;
                   const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + ");
                   const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: recForm.via, montoRecuperado: total, detalleRecuperacion: detalle, nota: recForm.nota });
-                  const ing = { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} vía ${recForm.via} — ${(() => { const pf = data.fantasmas.find(x => x.id === adel.pedidoId); return pf ? pf.cliente + (pf.descripcion ? " · " + pf.descripcion : "") : ""; })()}`, monto: total, montoUSD: usd, montoMXN: mxn || 0, moneda: mxn > 0 ? "MIXTO" : "USD", tipoCambio: tc || null, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id };
+                  const ing = { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} vía ${recForm.via} — ${(() => { const pf2 = data.fantasmas.find(x => x.id === adel.pedidoId); return pf2 ? pf2.cliente + (pf2.descripcion ? " · " + pf2.descripcion : "") : ""; })()}`, monto: total, montoUSD: usd, montoMXN: mxn || 0, moneda: mxn > 0 ? "MIXTO" : "USD", tipoCambio: tc || null, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id };
                   let nd = { ...data, adelantosAdmin: newAdel, gastosAdmin: [...(data.gastosAdmin || []), ing] };
                   nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: recForm.fecha, accion: `💰 Adelanto cobrado (${detalle}) vía ${VIA_LABELS[recForm.via] || recForm.via}`, quien: role }] });
                   persist(nd);
                   setShowRecuperar(null);
                   setAdelTab("pagados");
-                }} style={{ background: "#059669" }}>✅ Confirmar cobro</Btn>
+                }} style={{ background: "#059669" }}>✅ Confirmar cobro</Btn>}
               </div>
             </Modal>
           );
