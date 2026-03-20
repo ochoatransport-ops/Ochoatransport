@@ -668,7 +668,17 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
 // ─── Persistent form state cache ─────────────────────────────────────────────
 // Components defined inside App() remount on every Firestore update.
 // This cache persists form data across remounts so users never lose what they typed.
-const _cache = {};
+_cache = {};
+const _modals = {};
+const useModalState = (key, initial = false) => {
+  const [val, setVal] = useState(() => _modals[key] ?? initial);
+  const setter = useCallback((v) => {
+    const next = typeof v === "function" ? v(_modals[key] ?? initial) : v;
+    _modals[key] = next;
+    setVal(next);
+  }, [key]);
+  return [val, setter];
+};
 const usePersistedForm = (key, initial) => {
   const [val, setVal] = useState(() => _cache[key] ?? (typeof initial === 'function' ? initial() : initial));
   const setter = useCallback((v) => {
@@ -2075,8 +2085,8 @@ export default function App() {
     const [pagoCliente, setPagoCliente] = useState(null);
     const [pagoForm, setPagoForm] = usePersistedForm("pagoForm", { fecha: today(), monto: "", nota: "", selected: {}, tipo: "merc" });
 
-    const [showNewCliente, setShowNewCliente] = useState(false);
-    const [showNewVendedor, setShowNewVendedor] = useState(false);
+    const [showNewCliente, setShowNewCliente] = useModalState("showNewCliente");
+    const [showNewVendedor, setShowNewVendedor] = useModalState("showNewVendedor");
     const [newName, setNewName] = useState("");
 
     const addCliente = async (name) => {
@@ -2523,9 +2533,9 @@ export default function App() {
     const [pagoProv, setPagoProv] = useState(null);
     const [pagoProvForm, setPagoProvForm] = usePersistedForm("pagoProvForm", { fecha: today(), monto: "", nota: "", selected: {} });
 
-    const [showNewProv, setShowNewProv] = useState(false);
+    const [showNewProv, setShowNewProv] = useModalState("showNewProv");
     const [editProv, setEditProv] = useState(null);
-    const [provForm, setProvForm] = useState({ nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
+    const [provForm, setProvForm] = usePersistedForm("provForm", { nombre: "", ubicacion: "Otay", telefono: "", contacto: "" });
 
 
     const provInfo = data.proveedoresInfo || {}; // { provName: { ubicacion, telefono, contacto } }
@@ -2829,7 +2839,7 @@ export default function App() {
 
   // ============ ENVÍOS / INVENTARIO ============
   const Envios = () => {
-    const [showNewEnvio, setShowNewEnvio] = useState(false);
+    const [showNewEnvio, setShowNewEnvio] = useModalState("showNewEnvio");
     const [envioForm, setEnvioForm] = usePersistedForm("envioForm", { fecha: today(), vehiculo: "", notas: "", pedidos: {} });
 
     const envios = data.envios || [];
@@ -3011,7 +3021,7 @@ export default function App() {
     const [selPedidos, setSelPedidos] = useState({});
     const [vSearch, setVSearch] = useState("");
     const [vFiltro, setVFiltro] = useState("ALL");
-    const [showSobreModal, setShowSobreModal] = useState(false);
+    const [showSobreModal, setShowSobreModal] = useModalState("showSobreModal");
     const [ventasTab, setVentasTab] = useState("fantasmas"); // "fantasmas" | "fletes"
 
     let pedidosNuevos = data.fantasmas.filter(f => f.estado === "PEDIDO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaCreacion) - new Date(a.fechaCreacion));
@@ -4689,7 +4699,7 @@ export default function App() {
       const [sk, setSk] = useState("id");
       const [sd, setSd] = useState(1);
       const [editCell, setEditCell] = useState(null);
-      const [showPagoModal, setShowPagoModal] = useState(false);
+      const [showPagoModal, setShowPagoModal] = useModalState("showPagoModal");
       const [pagoSearch, setPagoSearch] = useState("");
       const [pagoSel, setPagoSel] = useState(null); // { fId, tipo }
       const [pagoMonto, setPagoMonto] = useState("");
@@ -4952,7 +4962,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                       <Btn v="secondary" onClick={() => setPagoSel(null)}>Cancelar</Btn>
-                      <Btn disabled={!(parseFloat(pagoMonto)>0) && !(parseFloat(pagoMotoMXN)>0)} onClick={registrarPago} style={{ background: "#059669" }}>💰 Registrar</Btn>
+                      <Btn disabled={!(parseFloat(pagoMonto)>0) && !(parseFloat(pagoMotoMXN)>0) && !(pagoSel && !isMerc && (() => { const pf = data.fantasmas.find(x=>x.id===pagoSel.fId); return pf && (pf.costoFlete||0)===0; })())} onClick={registrarPago} style={{ background: "#059669" }}>💰 Registrar</Btn>
                     </div>
                   </div>
                 );
@@ -5812,7 +5822,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
   const AdminAdelantos = () => {
     const [adelSearch, setAdelSearch] = useState("");
     const showAdelanto = showAdelantoApp; const setShowAdelanto = setShowAdelantoApp;
-    const [showRecuperar, setShowRecuperar] = useState(null);
+    const [showRecuperar, setShowRecuperar] = useModalState("showRecuperar", null);
     const [adelTab, setAdelTab] = useState("pendientes");
     const [recForm, setRecForm] = usePersistedForm("recForm", { monto: "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "" });
 
