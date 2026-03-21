@@ -623,7 +623,7 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
           const comPct = precioVentaFinal >= 10000 ? 0.005 : precioVentaFinal >= 1000 ? 0.008 : 0;
           const comCalc = Math.round(precioVentaFinal * comPct * 100) / 100;
           if (isEdit) {
-            updF(editPedido.id, { ...f,
+            updateF(editPedido.id, { ...f,
               costoMercancia: precioVentaFinal,
               costoReal: f.pedidoEspecial ? costoM : null,
               pedidoEspecial: f.pedidoEspecial || false,
