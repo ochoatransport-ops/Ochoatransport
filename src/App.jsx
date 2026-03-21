@@ -6062,7 +6062,14 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                     </div>
                     <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
                       <button onClick={async () => { if (!await showConfirm(`¿Eliminar adelanto de ${fmt(a.monto)}?`)) return; persist({ ...data, adelantosAdmin: adelantos.filter(x => x.id !== a.id), gastosAdmin: (data.gastosAdmin || []).filter(m => m.id !== a.movRef && m.adelantoRef !== a.id) }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 4 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button>
-                      <Btn sz="sm" onClick={() => { setRecForm({ monto: String(a.monto), montoMXN: "", tipoCambio: "", fecha: today(), nota: "", via: "transferencia" }); setShowRecuperar(a.id); }} style={{ background: "#059669" }}>💰 Marcar como cobrado</Btn>
+                      <Btn sz="sm" onClick={() => {
+                        const pf2 = data.fantasmas.find(x => x.id === a.pedidoId);
+                        const transAmt = (data.transferencias||[]).filter(t => t.pedidoId === a.pedidoId && t.confirmada && t.tipo === "fantasma").reduce((s,t) => s+(t.montoUSD||0), 0);
+                        const abonoTotal = pf2?.abonoMercancia || 0;
+                        const cashAmt = Math.max(0, Math.round((abonoTotal - transAmt)*100)/100);
+                        setRecForm({ montoTrans: transAmt > 0 ? String(transAmt) : "", monto: cashAmt > 0 ? String(cashAmt) : "", montoMXN: "", tipoCambio: "", fecha: today(), nota: "" });
+                        setShowRecuperar(a.id);
+                      }} style={{ background: "#059669" }}>💰 Marcar como cobrado</Btn>
                     </div>
                   </div>
                 );
@@ -6234,7 +6241,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                     <div style={{ fontSize: 10, color: "#3B82F6", marginBottom: 8 }}>Ya registrado en el sistema — no crea nuevo ingreso en Caja Admin</div>
                     <Fld label="Monto transferido (USD)">
                       <Inp type="number"
-                        value={recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill}
+                        value={recForm.montoTrans || ""}
                         onChange={e => setRecForm({ ...recForm, montoTrans: e.target.value })}
                         placeholder="0.00" />
                     </Fld>
@@ -6249,7 +6256,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                     <div style={{ display: "flex", gap: 8 }}>
                       <Fld label="USD en efectivo">
                         <Inp type="number"
-                          value={recForm.monto !== undefined ? recForm.monto : cashPreFill}
+                          value={recForm.monto || ""}
                           onChange={e => setRecForm({ ...recForm, monto: e.target.value })}
                           placeholder="0.00" />
                       </Fld>
@@ -6270,8 +6277,8 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
 
                   {/* Resumen total */}
                   {(() => {
-                    const trans = parseFloat(recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill) || 0;
-                    const ef = parseFloat(recForm.monto !== undefined ? recForm.monto : cashPreFill) || 0;
+                    const trans = parseFloat(recForm.montoTrans) || 0;
+                    const ef = parseFloat(recForm.monto) || 0;
                     const mxn = parseFloat(recForm.montoMXN) || 0;
                     const tc = parseFloat(recForm.tipoCambio) || 0;
                     const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
@@ -6294,8 +6301,8 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
                 <Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn>
                 {pagadoCompleto && (() => {
-                  const trans = parseFloat(recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill) || 0;
-                  const ef = parseFloat(recForm.monto !== undefined ? recForm.monto : cashPreFill) || 0;
+                  const trans = parseFloat(recForm.montoTrans) || 0;
+                  const ef = parseFloat(recForm.monto) || 0;
                   const mxn = parseFloat(recForm.montoMXN) || 0;
                   const tc = parseFloat(recForm.tipoCambio) || 0;
                   const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
