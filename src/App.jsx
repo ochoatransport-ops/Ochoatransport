@@ -607,7 +607,7 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
       })()}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
         <Btn v="secondary" onClick={() => { setShowNew(false) }}>Cancelar</Btn>
-        <Btn disabled={!allClientes.includes(f.cliente) || !allProveedores.includes(f.proveedor) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
+        <Btn disabled={!allClientes.includes(f.cliente) || (!f.soloRecoger && !allProveedores.includes(f.proveedor)) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
           const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
           const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
           const precioVentaUnit = esPieza ? (parseFloat(f.precioVenta) || 0) : 0;
