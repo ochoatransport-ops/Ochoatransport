@@ -623,6 +623,10 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
           const comPct = precioVentaFinal >= 10000 ? 0.005 : precioVentaFinal >= 1000 ? 0.008 : 0;
           const comCalc = Math.round(precioVentaFinal * comPct * 100) / 100;
           if (isEdit) {
+            const costoFleteF = f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0);
+            const newDineroStatus = (f.soloRecoger && !f.fleteDesconocido && !(costoFleteF > 0))
+              ? "NO_APLICA"
+              : (f.costoDesconocido ? "SIN_FONDOS" : editPedido.dineroStatus);
             updateF(editPedido.id, { ...f,
               costoMercancia: precioVentaFinal,
               costoReal: f.pedidoEspecial ? costoM : null,
@@ -630,13 +634,15 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
               modoEspecial: f.pedidoEspecial ? (f.modoEspecial || "total") : null,
               precioVentaUnitario: esPieza ? precioVentaUnit : null,
               gananciaEspecial: ganancia,
-              costoFlete: f.fleteDesconocido ? 0 : (parseFloat(f.costoFlete) || 0),
+              costoFlete: costoFleteF,
               cantidad: f.modoPrecios === "unitario" ? parseFloat(f.cantidad) || 0 : 0,
               costoUnitario: f.modoPrecios === "unitario" ? parseFloat(f.costoUnitario) || 0 : 0,
               comisionMonto: f.cobrarComision ? comCalc : 0,
               comisionPendiente: f.cobrarComision || false,
               totalVenta: precioVentaFinal + (f.cobrarComision ? comCalc : 0),
+              dineroStatus: newDineroStatus,
               fechaActualizacion: today(),
+              historial: [...(editPedido.historial || []), { fecha: today(), accion: "✏️ Pedido editado", quien: role }],
             });
           } else {
             addF({ ...f,
@@ -943,6 +949,11 @@ export default function App() {
       // Sync dineroStatus
       const PRESERVE_STATUS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
       d.fantasmas = d.fantasmas.map(f => {
+        // soloRecoger without real flete cost always stays NO_APLICA
+        if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
+          if (f.dineroStatus !== "NO_APLICA") return { ...f, dineroStatus: "NO_APLICA" };
+          return f;
+        }
         // Never touch statuses that represent money in transit or already received
         if (PRESERVE_STATUS.includes(f.dineroStatus)) return f;
         const mercPagado = f.clientePago;
