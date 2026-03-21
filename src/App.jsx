@@ -607,7 +607,7 @@ const NewForm = ({ showNew, data, addF, updateF, editPedido, role, setShowNew, t
       })()}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
         <Btn v="secondary" onClick={() => { setShowNew(false) }}>Cancelar</Btn>
-        <Btn disabled={!allClientes.includes(f.cliente) || (!f.soloRecoger && !allProveedores.includes(f.proveedor)) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
+        <Btn disabled={!f.cliente.trim() || (!f.soloRecoger && !allProveedores.includes(f.proveedor)) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "total" && !f.costoMercancia) || (!f.soloRecoger && !f.costoDesconocido && f.modoPrecios === "unitario" && (!f.cantidad || !f.costoUnitario))} onClick={() => {
           const costoM = f.soloRecoger || f.costoDesconocido ? 0 : calcCosto; // costo real del proveedor
           const esPieza = f.pedidoEspecial && f.modoEspecial === "pieza";
           const precioVentaUnit = esPieza ? (parseFloat(f.precioVenta) || 0) : 0;
@@ -3100,7 +3100,7 @@ export default function App() {
     // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
     const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && t.confirmada === true);
     // sinSobre = pedidos sin sobre: sin fondos + pagados por cliente (tienen dinero, pueden enviar sobre)
-    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO");
+    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO" || f.dineroStatus === "NO_APLICA");
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
     const sobreEnviado = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_CAMINO");
     const pagadoCliente = pedidosNuevos.filter(f => ["FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO"].includes(f.dineroStatus));
