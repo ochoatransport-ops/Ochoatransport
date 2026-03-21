@@ -1141,11 +1141,13 @@ export default function App() {
   };
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
+    // soloRecoger with no real flete → always NO_APLICA
+    if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) return "NO_APLICA";
     const mercPagado = f.clientePago;
     const fleteOk = f.fletePagado || (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0));
     if (mercPagado && fleteOk) return "TODO_PAGADO";
     if (mercPagado) return "FANTASMA_PAGADO";
-    if (fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
+    if (f.fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
     return null; // don't override
   };
 
@@ -1153,12 +1155,15 @@ export default function App() {
     persist({ ...data, fantasmas: data.fantasmas.map(f => {
       if (f.id !== id) return f;
       const updated = { ...f, ...ch, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `✏️ Pedido editado`, quien: role || "sys" }] };
-      // Auto-sync dineroStatus when payments change
-      const ds = calcDineroStatus(updated);
-      if (ds && !["DINERO_USA", "COLCHON_USADO", "COLCHON_REPUESTO"].includes(updated.dineroStatus)) {
-        updated.dineroStatus = ds;
-      } else if (ds === "TODO_PAGADO") {
-        updated.dineroStatus = ds;
+      // Only auto-sync dineroStatus if caller didn't explicitly set one
+      if (!ch.dineroStatus) {
+        const ds = calcDineroStatus(updated);
+        const preserve = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
+        if (ds === "NO_APLICA") {
+          updated.dineroStatus = "NO_APLICA";
+        } else if (ds && !preserve.includes(updated.dineroStatus)) {
+          updated.dineroStatus = ds;
+        }
       }
       return updated;
     }) });
@@ -6141,71 +6146,128 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
           const adel = adelantos.find(a => a.id === showRecuperar);
           if (!adel) return null;
           const pf = data.fantasmas.find(x => x.id === adel.pedidoId);
-          // Check if client has actually paid (via Bodega TJ or confirmed transfer)
-          const clientePagoBodega = pf?.clientePago || false;
-          const transConfirmada = (data.transferencias || []).some(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma");
-          const puedeCobrarse = clientePagoBodega || transConfirmada;
+          const totalPedido = pf ? (pf.totalVenta || pf.costoMercancia || 0) : adel.monto;
+          const abonoActual = pf ? (pf.abonoMercancia || 0) : 0;
+          const pagadoBodega = pf?.clientePago || false;
+          // Sum all confirmed transfers for this pedido's mercancía
+          const transTotal = (data.transferencias || [])
+            .filter(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma")
+            .reduce((s, t) => s + (t.montoUSD || 0), 0);
+          const totalRecibido = abonoActual; // abonoMercancia already includes transfers + bodega
+          const faltante = Math.max(0, totalPedido - totalRecibido);
+          const pagadoCompleto = pagadoBodega || totalRecibido >= totalPedido;
+          // Partial payment info
+          const hayPagosParciales = totalRecibido > 0 && !pagadoCompleto;
           return (
-            <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={440}>
-              <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
-                <strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"} · <span style={{ color: "#D97706", fontWeight: 700 }}>Adelantado: {fmt(adel.monto)}</span>
+            <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={460}>
+              {/* Resumen del adelanto */}
+              <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span><strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"}</span>
+                  <span style={{ color: "#D97706", fontWeight: 700 }}>Adelantado: {fmt(adel.monto)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#6B7280" }}>
+                  <span>Total pedido: <strong>{fmt(totalPedido)}</strong></span>
+                  <span>Recibido: <strong style={{ color: totalRecibido >= totalPedido ? "#059669" : "#D97706" }}>{fmt(totalRecibido)}</strong></span>
+                  {faltante > 0 && <span style={{ color: "#DC2626" }}>Falta: <strong>{fmt(faltante)}</strong></span>}
+                </div>
               </div>
-              {!puedeCobrarse ? (
+
+              {!pagadoCompleto ? (
                 <div style={{ background: "#FEF2F2", borderRadius: 8, padding: "14px 16px", border: "1px solid #FECACA", marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>⛔ No puedes cobrar este adelanto todavía</div>
-                  <div style={{ fontSize: 11, color: "#7F1D1D", marginBottom: 8 }}>El cliente aún no ha pagado la mercancía de este pedido. Para marcar el adelanto como cobrado necesitas:</div>
-                  <div style={{ fontSize: 11, color: "#991B1B" }}>
-                    <div style={{ marginBottom: 4 }}>• Que Adolfo registre el pago del cliente en <strong>Bodega TJ → Pagos Clientes</strong></div>
-                    <div>• O que confirmes una <strong>transferencia</strong> de la mercancía de este pedido en Transferencias</div>
-                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>⛔ Pago incompleto — no puedes cobrar el adelanto</div>
+                  {hayPagosParciales ? (
+                    <div style={{ fontSize: 11, color: "#7F1D1D" }}>
+                      El cliente ha pagado <strong>{fmt(totalRecibido)}</strong> de <strong>{fmt(totalPedido)}</strong> — falta <strong style={{ color: "#DC2626" }}>{fmt(faltante)}</strong> por recibir.
+                      <div style={{ marginTop: 8 }}>Registra el resto del pago en <strong>Bodega TJ → Pagos Clientes</strong> o confirma la transferencia pendiente.</div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#7F1D1D", marginBottom: 8 }}>
+                      El cliente aún no ha pagado. Necesitas:
+                      <div style={{ marginTop: 6 }}>• Que Adolfo registre el pago en <strong>Bodega TJ → Pagos Clientes</strong></div>
+                      <div>• O que confirmes una <strong>transferencia completa</strong> de este pedido</div>
+                    </div>
+                  )}
                   <div style={{ marginTop: 10, padding: "6px 10px", background: "#FEE2E2", borderRadius: 6, fontSize: 10, color: "#991B1B" }}>
-                    Estado actual: {pf ? <DBadge status={pf.dineroStatus || "SIN_FONDOS"} /> : "—"}
+                    Estado: {pf ? <DBadge status={pf.dineroStatus || "SIN_FONDOS"} /> : "—"}
                   </div>
                 </div>
               ) : (
                 <>
                   <div style={{ background: "#ECFDF5", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #A7F3D0", fontSize: 11, color: "#065F46", fontWeight: 600 }}>
-                    ✅ {transConfirmada ? "Transferencia confirmada" : "Pago registrado en Bodega TJ"} — puedes cobrar el adelanto
+                    ✅ Pago completo recibido ({fmt(totalRecibido)}) — registra cómo recuperaste el adelanto
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>¿Cómo te lo pagó el cliente?</div>
-                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-                    {[["transferencia", "🏦 Transferencia"], ["adolfo", "👤 Le pagó a Adolfo"], ["efectivo", "💵 Efectivo"]].map(([v, l]) => (
-                      <button key={v} onClick={() => setRecForm({ ...recForm, via: v })} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, border: recForm.via === v ? `2px solid ${VIA_COLORS[v]}` : "1px solid #E5E7EB", background: recForm.via === v ? "#F0FDF4" : "#fff", color: recForm.via === v ? VIA_COLORS[v] : "#6B7280", fontWeight: recForm.via === v ? 700 : 500, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>{l}</button>
-                    ))}
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>¿Cómo te lo regresaron?</div>
+
+                  {/* Transferencia */}
+                  <div style={{ background: "#EFF6FF", borderRadius: 8, border: "1px solid #BFDBFE", padding: "10px 14px", marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", marginBottom: 6 }}>🏦 Transferencia (USD)</div>
+                    <Fld label="Monto por transferencia"><Inp type="number" value={recForm.montoTrans || ""} onChange={e => setRecForm({ ...recForm, montoTrans: e.target.value })} placeholder="0.00" /></Fld>
                   </div>
-                  {recForm.via === "adolfo" && <div style={{ background: "#F5F3FF", borderRadius: 6, padding: "8px 12px", border: "1px solid #E9D5FF", marginBottom: 10, fontSize: 11, color: "#6D28D9" }}>👤 El cliente le pagó a Adolfo en Bodega TJ, y Adolfo te lo entregó a ti.</div>}
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Fld label="🇺🇸 USD recibido"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
-                    <Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld>
-                  </div>
-                  <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A", marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>🇲🇽 ¿También pagó en pesos? (opcional)</div>
+
+                  {/* Efectivo / Adolfo */}
+                  <div style={{ background: "#F5F3FF", borderRadius: 8, border: "1px solid #E9D5FF", padding: "10px 14px", marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", marginBottom: 6 }}>💵 Efectivo (lo que te trajo Adolfo o te dieron en mano)</div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <Fld label="MXN"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
-                      <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+                      <Fld label="USD en efectivo"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
+                      <Fld label="MXN en efectivo"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
                     </div>
-                    {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}
+                    {(parseFloat(recForm.montoMXN) > 0) && (
+                      <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+                    )}
+                    {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && (
+                      <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>
+                    )}
                   </div>
+
+                  {/* Total resumen */}
+                  {(() => {
+                    const trans = parseFloat(recForm.montoTrans) || 0;
+                    const ef = parseFloat(recForm.monto) || 0;
+                    const mxn = parseFloat(recForm.montoMXN) || 0;
+                    const tc = parseFloat(recForm.tipoCambio) || 0;
+                    const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
+                    const total = trans + ef + mxnUsd;
+                    if (total <= 0) return null;
+                    const diff = Math.abs(total - adel.monto);
+                    return (
+                      <div style={{ background: diff < 0.01 ? "#ECFDF5" : "#FEF3C7", borderRadius: 6, padding: "8px 12px", border: `1px solid ${diff < 0.01 ? "#A7F3D0" : "#FDE68A"}`, marginBottom: 8, fontSize: 11 }}>
+                        <strong>Total a cobrar: {fmt(total)}</strong> — Adelanto: {fmt(adel.monto)}
+                        {diff >= 0.01 && <span style={{ color: "#92400E" }}> · Diferencia: {fmt(diff)}</span>}
+                      </div>
+                    );
+                  })()}
+
+                  <Fld label="Fecha"><Inp type="date" value={recForm.fecha} onChange={e => setRecForm({ ...recForm, fecha: e.target.value })} /></Fld>
                   <Fld label="Nota (opcional)"><Inp value={recForm.nota} onChange={e => setRecForm({ ...recForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
                 </>
               )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
                 <Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn>
-                {puedeCobrarse && <Btn disabled={!(parseFloat(recForm.monto) > 0 || parseFloat(recForm.montoMXN) > 0)} onClick={() => {
-                  const usd = parseFloat(recForm.monto) || 0;
+                {pagadoCompleto && (() => {
+                  const trans = parseFloat(recForm.montoTrans) || 0;
+                  const ef = parseFloat(recForm.monto) || 0;
                   const mxn = parseFloat(recForm.montoMXN) || 0;
                   const tc = parseFloat(recForm.tipoCambio) || 0;
                   const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
-                  const total = usd + mxnUsd;
-                  const detalle = [usd > 0 ? `${fmt(usd)} USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN @${tc}` : ""].filter(Boolean).join(" + ");
-                  const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: recForm.via, montoRecuperado: total, detalleRecuperacion: detalle, nota: recForm.nota });
-                  const ing = { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} vía ${recForm.via} — ${(() => { const pf2 = data.fantasmas.find(x => x.id === adel.pedidoId); return pf2 ? pf2.cliente + (pf2.descripcion ? " · " + pf2.descripcion : "") : ""; })()}`, monto: total, montoUSD: usd, montoMXN: mxn || 0, moneda: mxn > 0 ? "MIXTO" : "USD", tipoCambio: tc || null, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id };
-                  let nd = { ...data, adelantosAdmin: newAdel, gastosAdmin: [...(data.gastosAdmin || []), ing] };
-                  nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: recForm.fecha, accion: `💰 Adelanto cobrado (${detalle}) vía ${VIA_LABELS[recForm.via] || recForm.via}`, quien: role }] });
-                  persist(nd);
-                  setShowRecuperar(null);
-                  setAdelTab("pagados");
-                }} style={{ background: "#059669" }}>✅ Confirmar cobro</Btn>}
+                  const total = trans + ef + mxnUsd;
+                  return (
+                    <Btn disabled={total <= 0} onClick={() => {
+                      const partes = [trans > 0 ? `${fmt(trans)} trans` : "", ef > 0 ? `${fmt(ef)} efec` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN@${tc}` : ""].filter(Boolean).join(" + ");
+                      const vias = [trans > 0 ? "transferencia" : "", (ef > 0 || mxnUsd > 0) ? "efectivo" : ""].filter(Boolean).join("+");
+                      const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: vias, montoRecuperado: total, detalleRecuperacion: partes, nota: recForm.nota });
+                      let nd = { ...data, adelantosAdmin: newAdel };
+                      // One ingreso per payment method
+                      if (trans > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (transferencia) — ${pf?.cliente||""}`, monto: trans, montoUSD: trans, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
+                      if (ef > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now()+1, concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo USD) — ${pf?.cliente||""}`, monto: ef, montoUSD: ef, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
+                      if (mxnUsd > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now()+2, concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo MXN) — ${pf?.cliente||""}`, monto: mxnUsd, montoUSD: mxnUsd, montoMXN: mxn, moneda: "MIXTO", tipoCambio: tc, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
+                      nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial||[]), { fecha: recForm.fecha, accion: `💰 Adelanto cobrado: ${fmt(total)} (${partes})`, quien: role }] });
+                      persist(nd);
+                      setShowRecuperar(null);
+                      setAdelTab("pagados");
+                    }} style={{ background: "#059669" }}>✅ Confirmar cobro</Btn>
+                  );
+                })()}
               </div>
             </Modal>
           );
