@@ -3601,15 +3601,19 @@ export default function App() {
     const tab = usaTab; const setTab = setUsaTab;
     const [selSobres, setSelSobres] = useState({});
     const [usaPendTab, setUsaPendTab] = useState("camino");
+    const [usaSearch, setUsaSearch] = useState("");
+
+    const usaMatch = (f) => {
+      if (!usaSearch.trim()) return true;
+      const s = usaSearch.toLowerCase().trim();
+      return f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s);
+    };
 
     // CLEAN FILTERS: each pedido in exactly ONE tab
-    // Pendientes: estado PEDIDO, sin dinero en USA (no confirmado)
     const pendientes = data.fantasmas.filter(f => f.estado === "PEDIDO" && (!f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "SOBRE_LISTO" || f.dineroStatus === "DINERO_CAMINO")).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
     const sobreEnCamino = pendientes.filter(f => f.dineroStatus === "DINERO_CAMINO");
     const sinSobreUSA = pendientes.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "SOBRE_LISTO");
-    // Recolección: estado PEDIDO, YA tiene dinero (DINERO_USA o COLCHON_USADO) Y chofer asignado
     const listoRecoleccion = data.fantasmas.filter(f => f.estado === "PEDIDO" && (f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO" || f.dineroStatus === "NO_APLICA") && f.choferAsignado).sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
-    // Recolectados: ya fueron recogidos, pendientes de confirmar en TJ
     const recolectados = data.fantasmas.filter(f => f.estado === "RECOLECTADO").sort((a, b) => new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
 
     const selCount = Object.keys(selSobres).filter(k => selSobres[k]).length;
@@ -3714,7 +3718,7 @@ export default function App() {
                   <div style={{ fontSize: 10, color: "#9CA3AF", padding: "4px 8px", background: "#FEF3C7", borderRadius: 4, flex: 1, marginRight: 8 }}>⚠️ México no ha marcado el sobre como enviado. Solo puedes usar colchón.</div>
                   <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sinSobreUSA.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
                 </div>
-                {sinSobreUSA.map(renderItem)}
+                {sinSobreUSA.filter(usaMatch).map(renderItem)}
               </div>
             )}
           </div>
@@ -3730,7 +3734,7 @@ export default function App() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
                   <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sobreEnCamino.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
                 </div>
-                {sobreEnCamino.map(renderItem)}
+                {sobreEnCamino.filter(usaMatch).map(renderItem)}
               </div>
             )}
           </div>
@@ -4210,7 +4214,7 @@ export default function App() {
 
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🇺🇸 Bodega USA</h2>
           <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, overflow: "auto" }}>
             {[
@@ -4229,6 +4233,12 @@ export default function App() {
             <button onClick={() => setTab("colchon")} style={{ padding: "6px 14px", borderRadius: 8, border: tab === "colchon" ? "2px solid #D97706" : "1px solid #D1D5DB", background: tab === "colchon" ? "#FEF3C7" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: tab === "colchon" ? 700 : 500, fontFamily: "inherit", color: tab === "colchon" ? "#92400E" : "#6B7280", display: "flex", alignItems: "center", gap: 4 }}>🛡️ Colchón</button>
           </div>
         </div>
+        {/* Search bar — visible in all tabs */}
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", pointerEvents: "none" }}>🔍</span>
+          <input value={usaSearch} onChange={e => setUsaSearch(e.target.value)} placeholder="Buscar cliente, folio, mercancía..." style={{ width: "100%", padding: "8px 12px 8px 32px", borderRadius: 8, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", outline: "none", background: "#FAFAFA", boxSizing: "border-box" }} />
+          {usaSearch && <button onClick={() => setUsaSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, lineHeight: 1 }}>✕</button>}
+        </div>
         {tab === "pendientes" && <PendientesTab />}
         {tab === "chofer" && <AsignarChofer />}
         {tab === "recoleccion" && <Recoleccion />}
@@ -4245,7 +4255,7 @@ export default function App() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {recolectados.map(f => (
+                {recolectados.filter(usaMatch).map(f => (
                   <div key={f.id} style={{ background: "#fff", borderRadius: 8, border: "1px solid #E0E7FF", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
@@ -5446,13 +5456,15 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       if ((m.concepto || "").startsWith("SOBRE USA")) {
         const fIdMatch = (m.concepto || "").match(/F-\d+/);
         const fId = fIdMatch ? fIdMatch[0] : null;
-        nd.adelantosAdmin = (nd.adelantosAdmin || []).filter(a => !(a.pedidoId === fId && a.movRef === mId));
+        // Also find via adelantoRef cross-reference
+        const adelantoLinked = fId ? null : (nd.adelantosAdmin || []).find(a => a.movRef === mId);
+        const targetId = fId || adelantoLinked?.pedidoId || null;
+        nd.adelantosAdmin = (nd.adelantosAdmin || []).filter(a => !(a.movRef === mId));
         nd.fantasmas = (nd.fantasmas || []).map(f => {
-          if (f.id === fId || (f.dineroStatus === "DINERO_CAMINO" && f.sobreOrigen === "admin" && !fId)) {
-            const wasClientePago = f.clientePago;
-            return { ...f, dineroStatus: wasClientePago ? "SOBRE_LISTO" : "SIN_FONDOS", sobreOrigen: null, adelantoAdmin: false, historial: [...(f.historial || []), { fecha: today(), accion: "Sobre deshecho (movimiento eliminado)", quien: "Admin" }] };
-          }
-          return f;
+          const matches = f.id === targetId || (!targetId && f.dineroStatus === "DINERO_CAMINO" && f.sobreOrigen === "admin");
+          if (!matches) return f;
+          const nuevoStatus = (f.clientePago || (f.abonoMercancia || 0) > 0) ? "SOBRE_LISTO" : "SIN_FONDOS";
+          return { ...f, dineroStatus: nuevoStatus, sobreOrigen: null, adelantoAdmin: false, historial: [...(f.historial || []), { fecha: today(), accion: "↩ Sobre deshecho — movimiento eliminado de Caja Admin", quien: "Admin" }] };
         });
       }
 
@@ -6148,82 +6160,118 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
           const pf = data.fantasmas.find(x => x.id === adel.pedidoId);
           const totalPedido = pf ? (pf.totalVenta || pf.costoMercancia || 0) : adel.monto;
           const abonoActual = pf ? (pf.abonoMercancia || 0) : 0;
-          const pagadoBodega = pf?.clientePago || false;
-          // Sum all confirmed transfers for this pedido's mercancía
-          const transTotal = (data.transferencias || [])
-            .filter(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma")
-            .reduce((s, t) => s + (t.montoUSD || 0), 0);
-          const totalRecibido = abonoActual; // abonoMercancia already includes transfers + bodega
+
+          // What was already paid via confirmed transfers
+          const transConfirmadas = (data.transferencias || []).filter(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma");
+          const transTotal = transConfirmadas.reduce((s, t) => s + (t.montoUSD || 0), 0);
+
+          // What was paid in cash via Bodega TJ (movimientos with concepto "mercancía")
+          const movsBodega = (pf?.movimientos || []).filter(m => (m.concepto||"").toLowerCase().includes("mercancía") || (m.concepto||"").toLowerCase().includes("mercancia"));
+          const efectivoAdolfo = movsBodega.reduce((s, m) => s + (m.montoUSD || m.monto || 0), 0);
+
+          // Effective: cash = abonoActual - transTotal
+          const efectivoCash = Math.max(0, Math.round((abonoActual - transTotal) * 100) / 100);
+
+          const totalRecibido = abonoActual;
           const faltante = Math.max(0, totalPedido - totalRecibido);
-          const pagadoCompleto = pagadoBodega || totalRecibido >= totalPedido;
-          // Partial payment info
+          const pagadoCompleto = totalRecibido >= totalPedido || (pf?.clientePago && totalRecibido >= totalPedido * 0.999);
           const hayPagosParciales = totalRecibido > 0 && !pagadoCompleto;
+
+          // Pre-fill form when opening (if fields are empty)
+          const transPreFill = transTotal > 0 ? String(Math.round(transTotal * 100) / 100) : "";
+          const cashPreFill = efectivoCash > 0 ? String(efectivoCash) : "";
+
           return (
-            <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={460}>
-              {/* Resumen del adelanto */}
+            <Modal title="💰 Cobrar adelanto" onClose={() => setShowRecuperar(null)} w={480}>
+              {/* Resumen */}
               <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 12, border: "1px solid #E5E7EB", fontSize: 11 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <span><strong>{adel.pedidoId}</strong> · {pf?.cliente || "—"}</span>
                   <span style={{ color: "#D97706", fontWeight: 700 }}>Adelantado: {fmt(adel.monto)}</span>
                 </div>
-                <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#6B7280" }}>
-                  <span>Total pedido: <strong>{fmt(totalPedido)}</strong></span>
-                  <span>Recibido: <strong style={{ color: totalRecibido >= totalPedido ? "#059669" : "#D97706" }}>{fmt(totalRecibido)}</strong></span>
-                  {faltante > 0 && <span style={{ color: "#DC2626" }}>Falta: <strong>{fmt(faltante)}</strong></span>}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 10 }}>
+                  <div style={{ background: "#fff", borderRadius: 6, padding: "6px 8px", border: "1px solid #E5E7EB" }}>
+                    <div style={{ color: "#9CA3AF", marginBottom: 2 }}>Total pedido</div>
+                    <div style={{ fontWeight: 700 }}>{fmt(totalPedido)}</div>
+                  </div>
+                  <div style={{ background: transTotal > 0 ? "#EFF6FF" : "#fff", borderRadius: 6, padding: "6px 8px", border: "1px solid #BFDBFE" }}>
+                    <div style={{ color: "#2563EB", marginBottom: 2 }}>🏦 Trans. confirmada</div>
+                    <div style={{ fontWeight: 700, color: "#1D4ED8" }}>{transTotal > 0 ? fmt(transTotal) : "—"}</div>
+                  </div>
+                  <div style={{ background: efectivoCash > 0 ? "#F5F3FF" : "#fff", borderRadius: 6, padding: "6px 8px", border: "1px solid #E9D5FF" }}>
+                    <div style={{ color: "#6D28D9", marginBottom: 2 }}>💵 Efectivo (Adolfo)</div>
+                    <div style={{ fontWeight: 700, color: "#5B21B6" }}>{efectivoCash > 0 ? fmt(efectivoCash) : "—"}</div>
+                  </div>
                 </div>
+                {faltante > 0 && <div style={{ marginTop: 8, color: "#DC2626", fontSize: 10, fontWeight: 600 }}>⚠ Falta recibir: {fmt(faltante)}</div>}
               </div>
 
               {!pagadoCompleto ? (
-                <div style={{ background: "#FEF2F2", borderRadius: 8, padding: "14px 16px", border: "1px solid #FECACA", marginBottom: 12 }}>
+                <div style={{ background: "#FEF2F2", borderRadius: 8, padding: "14px 16px", border: "1px solid #FECACA" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>⛔ Pago incompleto — no puedes cobrar el adelanto</div>
                   {hayPagosParciales ? (
                     <div style={{ fontSize: 11, color: "#7F1D1D" }}>
-                      El cliente ha pagado <strong>{fmt(totalRecibido)}</strong> de <strong>{fmt(totalPedido)}</strong> — falta <strong style={{ color: "#DC2626" }}>{fmt(faltante)}</strong> por recibir.
-                      <div style={{ marginTop: 8 }}>Registra el resto del pago en <strong>Bodega TJ → Pagos Clientes</strong> o confirma la transferencia pendiente.</div>
+                      El cliente ha pagado <strong>{fmt(totalRecibido)}</strong> de <strong>{fmt(totalPedido)}</strong> — falta <strong>{fmt(faltante)}</strong>.
+                      <div style={{ marginTop: 6 }}>Registra el resto en <strong>Bodega TJ → Pagos Clientes</strong> o confirma la transferencia pendiente.</div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: 11, color: "#7F1D1D", marginBottom: 8 }}>
-                      El cliente aún no ha pagado. Necesitas:
+                    <div style={{ fontSize: 11, color: "#7F1D1D" }}>
+                      El cliente aún no ha pagado.
                       <div style={{ marginTop: 6 }}>• Que Adolfo registre el pago en <strong>Bodega TJ → Pagos Clientes</strong></div>
-                      <div>• O que confirmes una <strong>transferencia completa</strong> de este pedido</div>
+                      <div>• O confirma una <strong>transferencia</strong> de este pedido</div>
                     </div>
                   )}
-                  <div style={{ marginTop: 10, padding: "6px 10px", background: "#FEE2E2", borderRadius: 6, fontSize: 10, color: "#991B1B" }}>
-                    Estado: {pf ? <DBadge status={pf.dineroStatus || "SIN_FONDOS"} /> : "—"}
-                  </div>
                 </div>
               ) : (
                 <>
                   <div style={{ background: "#ECFDF5", borderRadius: 6, padding: "8px 12px", marginBottom: 12, border: "1px solid #A7F3D0", fontSize: 11, color: "#065F46", fontWeight: 600 }}>
-                    ✅ Pago completo recibido ({fmt(totalRecibido)}) — registra cómo recuperaste el adelanto
+                    ✅ Pago completo — confirma cómo recuperaste el adelanto
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>¿Cómo te lo regresaron?</div>
 
-                  {/* Transferencia */}
+                  {/* Transferencia — read-only, pre-filled, does NOT create gastosAdmin ingreso */}
                   <div style={{ background: "#EFF6FF", borderRadius: 8, border: "1px solid #BFDBFE", padding: "10px 14px", marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", marginBottom: 6 }}>🏦 Transferencia (USD)</div>
-                    <Fld label="Monto por transferencia"><Inp type="number" value={recForm.montoTrans || ""} onChange={e => setRecForm({ ...recForm, montoTrans: e.target.value })} placeholder="0.00" /></Fld>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#1D4ED8", marginBottom: 4 }}>🏦 Vía transferencia bancaria</div>
+                    <div style={{ fontSize: 10, color: "#3B82F6", marginBottom: 8 }}>Ya registrado en el sistema — no crea nuevo ingreso en Caja Admin</div>
+                    <Fld label="Monto transferido (USD)">
+                      <Inp type="number"
+                        value={recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill}
+                        onChange={e => setRecForm({ ...recForm, montoTrans: e.target.value })}
+                        placeholder="0.00" />
+                    </Fld>
+                    {transTotal > 0 && (recForm.montoTrans === undefined || recForm.montoTrans === "") &&
+                      <div style={{ fontSize: 10, color: "#2563EB", marginTop: 4 }}>💡 Auto-llenado: {fmt(transTotal)} de transferencias confirmadas</div>}
                   </div>
 
-                  {/* Efectivo / Adolfo */}
+                  {/* Efectivo — ONLY this creates gastosAdmin ingreso */}
                   <div style={{ background: "#F5F3FF", borderRadius: 8, border: "1px solid #E9D5FF", padding: "10px 14px", marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", marginBottom: 6 }}>💵 Efectivo (lo que te trajo Adolfo o te dieron en mano)</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", marginBottom: 4 }}>💵 Efectivo entregado por Adolfo / en mano</div>
+                    <div style={{ fontSize: 10, color: "#7C3AED", marginBottom: 8 }}>Solo este monto se registra como ingreso en Caja Admin</div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <Fld label="USD en efectivo"><Inp type="number" value={recForm.monto} onChange={e => setRecForm({ ...recForm, monto: e.target.value })} placeholder="0.00" /></Fld>
-                      <Fld label="MXN en efectivo"><Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" /></Fld>
+                      <Fld label="USD en efectivo">
+                        <Inp type="number"
+                          value={recForm.monto !== undefined ? recForm.monto : cashPreFill}
+                          onChange={e => setRecForm({ ...recForm, monto: e.target.value })}
+                          placeholder="0.00" />
+                      </Fld>
+                      <Fld label="MXN en efectivo">
+                        <Inp type="number" value={recForm.montoMXN || ""} onChange={e => setRecForm({ ...recForm, montoMXN: e.target.value })} placeholder="0.00" />
+                      </Fld>
                     </div>
-                    {(parseFloat(recForm.montoMXN) > 0) && (
-                      <Fld label="T. Cambio"><Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" /></Fld>
+                    {parseFloat(recForm.montoMXN) > 0 && (
+                      <Fld label="T. Cambio">
+                        <Inp type="number" value={recForm.tipoCambio || ""} onChange={e => setRecForm({ ...recForm, tipoCambio: e.target.value })} placeholder="17.50" />
+                      </Fld>
                     )}
-                    {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 && (
-                      <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>
-                    )}
+                    {recForm.montoMXN && recForm.tipoCambio && parseFloat(recForm.tipoCambio) > 0 &&
+                      <div style={{ fontSize: 11, color: "#065F46", fontWeight: 600, marginTop: 4 }}>= {fmt(parseFloat(recForm.montoMXN) / parseFloat(recForm.tipoCambio))} USD</div>}
+                    {efectivoCash > 0 && !recForm.monto &&
+                      <div style={{ fontSize: 10, color: "#7C3AED", marginTop: 4 }}>💡 Según los pagos de Bodega TJ: {fmt(efectivoCash)} USD en efectivo</div>}
                   </div>
 
-                  {/* Total resumen */}
+                  {/* Resumen total */}
                   {(() => {
-                    const trans = parseFloat(recForm.montoTrans) || 0;
-                    const ef = parseFloat(recForm.monto) || 0;
+                    const trans = parseFloat(recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill) || 0;
+                    const ef = parseFloat(recForm.monto !== undefined ? recForm.monto : cashPreFill) || 0;
                     const mxn = parseFloat(recForm.montoMXN) || 0;
                     const tc = parseFloat(recForm.tipoCambio) || 0;
                     const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
@@ -6232,8 +6280,8 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                     const diff = Math.abs(total - adel.monto);
                     return (
                       <div style={{ background: diff < 0.01 ? "#ECFDF5" : "#FEF3C7", borderRadius: 6, padding: "8px 12px", border: `1px solid ${diff < 0.01 ? "#A7F3D0" : "#FDE68A"}`, marginBottom: 8, fontSize: 11 }}>
-                        <strong>Total a cobrar: {fmt(total)}</strong> — Adelanto: {fmt(adel.monto)}
-                        {diff >= 0.01 && <span style={{ color: "#92400E" }}> · Diferencia: {fmt(diff)}</span>}
+                        <strong>Total confirmado: {fmt(total)}</strong> (Trans: {fmt(trans)} + Efectivo: {fmt(ef + mxnUsd)}) · Adelanto original: {fmt(adel.monto)}
+                        {diff >= 0.01 && <span style={{ color: "#92400E" }}> · ⚠ Diferencia: {fmt(diff)}</span>}
                       </div>
                     );
                   })()}
@@ -6242,25 +6290,25 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                   <Fld label="Nota (opcional)"><Inp value={recForm.nota} onChange={e => setRecForm({ ...recForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
                 </>
               )}
+
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
                 <Btn v="secondary" onClick={() => setShowRecuperar(null)}>Cancelar</Btn>
                 {pagadoCompleto && (() => {
-                  const trans = parseFloat(recForm.montoTrans) || 0;
-                  const ef = parseFloat(recForm.monto) || 0;
+                  const trans = parseFloat(recForm.montoTrans !== undefined ? recForm.montoTrans : transPreFill) || 0;
+                  const ef = parseFloat(recForm.monto !== undefined ? recForm.monto : cashPreFill) || 0;
                   const mxn = parseFloat(recForm.montoMXN) || 0;
                   const tc = parseFloat(recForm.tipoCambio) || 0;
                   const mxnUsd = tc > 0 ? Math.round(mxn / tc * 100) / 100 : 0;
                   const total = trans + ef + mxnUsd;
+                  const partes = [trans > 0 ? `${fmt(trans)} trans` : "", ef > 0 ? `${fmt(ef)} efec USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN@${tc}` : ""].filter(Boolean).join(" + ");
+                  const vias = [trans > 0 ? "transferencia" : "", (ef > 0 || mxnUsd > 0) ? "efectivo" : ""].filter(Boolean).join("+");
                   return (
                     <Btn disabled={total <= 0} onClick={() => {
-                      const partes = [trans > 0 ? `${fmt(trans)} trans` : "", ef > 0 ? `${fmt(ef)} efec` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN@${tc}` : ""].filter(Boolean).join(" + ");
-                      const vias = [trans > 0 ? "transferencia" : "", (ef > 0 || mxnUsd > 0) ? "efectivo" : ""].filter(Boolean).join("+");
-                      const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: vias, montoRecuperado: total, detalleRecuperacion: partes, nota: recForm.nota });
+                      const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: vias, montoRecuperado: total, montoTrans: trans, montoEfectivo: ef + mxnUsd, detalleRecuperacion: partes, nota: recForm.nota });
                       let nd = { ...data, adelantosAdmin: newAdel };
-                      // One ingreso per payment method
-                      if (trans > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (transferencia) — ${pf?.cliente||""}`, monto: trans, montoUSD: trans, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
-                      if (ef > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now()+1, concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo USD) — ${pf?.cliente||""}`, monto: ef, montoUSD: ef, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
-                      if (mxnUsd > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now()+2, concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo MXN) — ${pf?.cliente||""}`, monto: mxnUsd, montoUSD: mxnUsd, montoMXN: mxn, moneda: "MIXTO", tipoCambio: tc, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
+                      // ONLY cash creates gastosAdmin ingreso — transfers are already in the system
+                      if (ef > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now(), concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo USD) — ${pf?.cliente||""}`, monto: ef, montoUSD: ef, montoMXN: 0, moneda: "USD", destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
+                      if (mxnUsd > 0) nd.gastosAdmin = [...(nd.gastosAdmin||[]), { id: Date.now()+1, concepto: `RECUPERADO ADELANTO ${adel.pedidoId} (efectivo MXN) — ${pf?.cliente||""}`, monto: mxnUsd, montoUSD: mxnUsd, montoMXN: mxn, moneda: "MIXTO", tipoCambio: tc, destino: "ADMIN", fecha: recForm.fecha, nota: recForm.nota, tipoMov: "ingreso", adelantoRef: adel.id }];
                       nd.fantasmas = nd.fantasmas.map(f => f.id !== adel.pedidoId ? f : { ...f, adelantoRecuperado: true, fechaActualizacion: today(), historial: [...(f.historial||[]), { fecha: recForm.fecha, accion: `💰 Adelanto cobrado: ${fmt(total)} (${partes})`, quien: role }] });
                       persist(nd);
                       setShowRecuperar(null);
