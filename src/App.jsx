@@ -946,7 +946,7 @@ export default function App() {
         // Never touch statuses that represent money in transit or already received
         if (PRESERVE_STATUS.includes(f.dineroStatus)) return f;
         const mercPagado = f.clientePago;
-        const fleteOk = f.fletePagado || f.soloRecoger;
+        const fleteOk = f.fletePagado || (f.soloRecoger && !f.fleteDesconocido);
         // Downgrade TODO_PAGADO if flete is not actually paid
         if (f.dineroStatus === "TODO_PAGADO" && mercPagado && !fleteOk) return { ...f, dineroStatus: "FANTASMA_PAGADO" };
         if (f.dineroStatus === "TODO_PAGADO" && !mercPagado) return { ...f, dineroStatus: fleteOk ? "FLETE_PAGADO" : "SIN_FONDOS" };
@@ -1131,7 +1131,7 @@ export default function App() {
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
     const mercPagado = f.clientePago;
-    const fleteOk = f.fletePagado || f.soloRecoger;
+    const fleteOk = f.fletePagado || (f.soloRecoger && !f.fleteDesconocido);
     if (mercPagado && fleteOk) return "TODO_PAGADO";
     if (mercPagado) return "FANTASMA_PAGADO";
     if (fletePagado && f.costoFlete > 0) return "FLETE_PAGADO";
