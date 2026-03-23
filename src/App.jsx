@@ -2150,7 +2150,7 @@ export default function App() {
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
     const vends = [...new Set(data.fantasmas.map(f => f.vendedor).filter(Boolean))];
 
-    let list = filterByDateFor(data.fantasmas, "fechaCreacion", bTipo, bOff).filter(f => f.estado !== "CERRADO");
+    let list = filterByDate(data.fantasmas, "fechaCreacion").filter(f => f.estado !== "CERRADO");
     if (fProv !== "ALL") list = list.filter(f => f.proveedor === fProv);
     if (fCli !== "ALL") list = list.filter(f => f.cliente === fCli);
     if (fVend !== "ALL") list = list.filter(f => f.vendedor === fVend);
@@ -2171,8 +2171,7 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Bitácora</h2>
-          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-            <MiniPeriodBar tipo={bTipo} setTipo={setBTipo} off={bOff} setOff={setBOff} label={periodoLabelFor(bTipo, bOff)} />
+          <div style={{ display: "flex", gap: 4 }}>
             <Btn sz="sm" v={modo === "axia" ? "primary" : "secondary"} onClick={() => setModo("axia")}>📋 Completa</Btn>
             <Btn sz="sm" v={modo === "status" ? "primary" : "secondary"} onClick={() => setModo("status")}>📊 Compacta</Btn>
             <Btn v="secondary" sz="sm" onClick={exportCSV}><I.Dl /> CSV</Btn>
