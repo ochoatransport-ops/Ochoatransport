@@ -5864,7 +5864,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       } else {
         const nuevoAbono = (pedido?.abonoMercancia || 0) + montoUSD;
         const fleteOk = pedido ? (pedido.fletePagado || !!pedido.soloRecoger) : false;
-        const mercOk = nuevoAbono >= (pedido?.costoMercancia || 0);
+        const mercOk = nuevoAbono >= (pedido?.totalVenta || pedido?.costoMercancia || 0);
         nd.fantasmas = nd.fantasmas.map(f => f.id !== t.pedidoId ? f : {
           ...f, abonoMercancia: nuevoAbono,
           clientePago: mercOk,
@@ -6142,11 +6142,12 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
               <Fld label="Monto USD *"><Inp type="number" value={adelForm.monto} onChange={e => setAdelForm({ ...adelForm, monto: e.target.value })} placeholder="0.00" /></Fld>
               <Fld label="Fecha"><Inp type="date" value={adelForm.fecha} onChange={e => setAdelForm({ ...adelForm, fecha: e.target.value })} /></Fld>
             </div>
-            {parseFloat(adelForm.monto) > saldoAdmin && <div style={{ background: "#FEE2E2", borderRadius: 6, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>⚠️ Saldo insuficiente — tienes {fmt(saldoAdmin)} USD</div>}
+            {adelForm.pedidoId && adelantos.some(a => a.pedidoId === adelForm.pedidoId && !a.recuperado) && <div style={{ background: "#FEF3C7", borderRadius: 6, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: "#92400E", fontWeight: 600 }}>⚠️ Este pedido ya tiene un adelanto activo pendiente de cobrar — no se puede crear otro</div>}
+              {parseFloat(adelForm.monto) > saldoAdmin && <div style={{ background: "#FEE2E2", borderRadius: 6, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>⚠️ Saldo insuficiente — tienes {fmt(saldoAdmin)} USD</div>}
             <Fld label="Nota (opcional)"><Inp value={adelForm.nota} onChange={e => setAdelForm({ ...adelForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
               <Btn v="secondary" onClick={() => { setShowAdelanto(false) }}>Cancelar</Btn>
-              <Btn disabled={!adelForm.pedidoId || !(parseFloat(adelForm.monto) > 0)} onClick={() => {
+              <Btn disabled={!adelForm.pedidoId || !(parseFloat(adelForm.monto) > 0) || adelantos.some(a => a.pedidoId === adelForm.pedidoId && !a.recuperado)} onClick={() => {
                 const monto = parseFloat(adelForm.monto) || 0;
                 const refId = Date.now();
                 const a = { id: refId, pedidoId: adelForm.pedidoId, monto, fecha: adelForm.fecha, nota: adelForm.nota, recuperado: false, movRef: refId + 1 };
