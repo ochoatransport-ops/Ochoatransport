@@ -2070,7 +2070,7 @@ export default function App() {
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
     const vends = [...new Set(data.fantasmas.map(f => f.vendedor).filter(Boolean))];
 
-    let list = data.fantasmas.filter(f => f.estado !== "CERRADO");
+    let list = filterByDate(data.fantasmas, "fechaCreacion").filter(f => f.estado !== "CERRADO");
     if (fProv !== "ALL") list = list.filter(f => f.proveedor === fProv);
     if (fCli !== "ALL") list = list.filter(f => f.cliente === fCli);
     if (fVend !== "ALL") list = list.filter(f => f.vendedor === fVend);
@@ -2126,6 +2126,63 @@ export default function App() {
           {bitTab === "fantasmas" && (() => { const tf = sorted.reduce((s, f) => s + f.costoMercancia, 0); const tp = sorted.filter(f => f.clientePago).reduce((s, f) => s + f.costoMercancia, 0); return <span> · Total: <strong>{fmt(tf)}</strong> · Pagado: <strong style={{ color: "#059669" }}>{fmt(tp)}</strong> · Pendiente: <strong style={{ color: "#DC2626" }}>{fmt(tf - tp)}</strong></span>; })()}
         </div>
 
+        {bitTab === "fantasmas" ? (() => {
+          const USA_SENT = ["DINERO_CAMINO","DINERO_USA","COLCHON_USADO","COLCHON_REPUESTO"];
+          const noEnv = sorted.filter(f => !USA_SENT.includes(f.dineroStatus));
+          const env   = sorted.filter(f =>  USA_SENT.includes(f.dineroStatus));
+          const colsFant = modo === "axia" ? 10 : 8;
+          const tdF = { padding: "4px 8px", borderBottom: "1px solid #F3F4F6" };
+          const renderFRow = (f, i) => {
+            const go = () => { if (editCell) return; setDetailMode("full"); navigate("detail", f.id, view); };
+            return (
+              <tr key={f.id} style={{ background: i % 2 === 0 ? "#fff" : "#FAFBFC" }} onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"} onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#FAFBFC"}>
+                <td onClick={() => goDelayed(go)} style={{ ...tdF, fontFamily: "monospace", color: "#1A2744", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{f.id}</td>
+                {modo === "axia" && <td style={tdF}><EditCell f={f} field="vendedor" select={vends} /></td>}
+                <td style={{ ...tdF, color: "#D97706", fontWeight: 600 }}><EditCell f={f} field="proveedor" select={provs} /></td>
+                <td style={{ ...tdF, fontWeight: 600 }}><EditCell f={f} field="cliente" select={clis} /></td>
+                <td style={{ ...tdF, maxWidth: 140 }}><EditCell f={f} field="descripcion" /></td>
+                {modo === "axia" && <td style={tdF}><div style={{ display: "flex", gap: 4, alignItems: "center" }}><EditCell f={f} field="cantBultos" numeric style={{ width: 30 }} /><EditCell f={f} field="empaque" select={EMPAQUES} /></div></td>}
+                <td style={tdF}><EditCell f={f} field="costoMercancia" numeric style={{ color: "#DC2626", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
+                <td onClick={go} style={{ ...tdF, textAlign: "center", cursor: "pointer" }}>
+                  {f.clientePago ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span>
+                    : (f.abonoMercancia||0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoMercancia)}</span>
+                    : f.costoDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span>
+                    : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
+                </td>
+                <td onClick={go} style={{ ...tdF, padding: "4px 6px", cursor: "pointer" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td>
+                <td style={{ ...tdF, textAlign: "center", padding: "4px" }}><button onClick={e => { e.stopPropagation(); setConfirm(f.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D1D5DB", padding: 2 }} onMouseEnter={e => e.currentTarget.style.color = "#DC2626"} onMouseLeave={e => e.currentTarget.style.color = "#D1D5DB"}><I.Trash /></button></td>
+              </tr>
+            );
+          };
+          const sHdr = (label, count, total, bg, color) => (
+            <tr key={label}><td colSpan={colsFant} style={{ padding: "7px 12px", background: bg, fontSize: 11, fontWeight: 700, color, borderBottom: `2px solid ${color}33`, borderTop: "1px solid #E5E7EB" }}>
+              {label} <span style={{ fontWeight: 400, fontSize: 10, color: "#6B7280", marginLeft: 6 }}>{count} pedido{count !== 1 ? "s" : ""} · {fmt(total)}</span>
+            </td></tr>
+          );
+          return (
+            <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "70vh" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
+                <thead><tr>
+                  <th onClick={() => toggle("id")} style={th}>Folio{arr("id")}</th>
+                  {modo === "axia" && <th style={th}>Vendedor</th>}
+                  <th onClick={() => toggle("proveedor")} style={th}>Proveedor{arr("proveedor")}</th>
+                  <th onClick={() => toggle("cliente")} style={th}>Cliente{arr("cliente")}</th>
+                  <th style={th}>Mercancía</th>
+                  {modo === "axia" && <th style={th}>Empaque</th>}
+                  <th onClick={() => toggle("costoMercancia")} style={{...th, color: "#FCA5A5"}}>👻 Costo{arr("costoMercancia")}</th>
+                  <th style={th}>👻 Pagó</th>
+                  <th style={th}>💵 Dinero</th>
+                  <th style={{...th, cursor: "default", width: 30}}></th>
+                </tr></thead>
+                <tbody>
+                  {noEnv.length > 0 && <>{sHdr("📦 No enviados a USA", noEnv.length, noEnv.reduce((s,f)=>s+f.costoMercancia,0), "#FEF2F2", "#991B1B")}{noEnv.map((f,i)=>renderFRow(f,i))}</>}
+                  {env.length > 0  && <>{sHdr("✅ Enviados a USA",    env.length,   env.reduce((s,f)=>s+f.costoMercancia,0), "#ECFDF5", "#065F46")}{env.map((f,i)=>renderFRow(f,noEnv.length+i))}</>}
+                  {sorted.length === 0 && <tr><td colSpan={colsFant} style={{ textAlign: "center", padding: 32, color: "#9CA3AF", fontSize: 12 }}>Sin pedidos en este período</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          );
+        })() : (
         <div style={{ background: "#fff", borderRadius: 9, border: "1px solid #E5E7EB", overflow: "auto", maxHeight: "70vh" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "inherit" }}>
             <thead><tr>
@@ -2136,7 +2193,7 @@ export default function App() {
               <th style={th}>Mercancía</th>
               {modo === "axia" && <th style={th}>Empaque</th>}
               {bitTab === "estado" && <><th style={th}>Estado</th><th style={th}>Dinero</th></>}
-              {(bitTab === "fantasmas" || bitTab === "todos") && <><th onClick={() => toggle("costoMercancia")} style={{...th, color: "#FCA5A5"}}>👻 Costo{arr("costoMercancia")}</th><th style={th}>👻 Pagó</th></>}
+              {(bitTab === "todos") && <><th onClick={() => toggle("costoMercancia")} style={{...th, color: "#FCA5A5"}}>👻 Costo{arr("costoMercancia")}</th><th style={th}>👻 Pagó</th></>}
               {(bitTab === "fletes" || bitTab === "todos") && <><th onClick={() => toggle("costoFlete")} style={{...th, color: "#93C5FD"}}>🚛 Flete{arr("costoFlete")}</th><th style={th}>🚛 Pagó</th></>}
               <th style={{...th, cursor: "default", width: 30}}></th>
             </tr></thead>
@@ -2157,7 +2214,7 @@ export default function App() {
                       </div>
                     </td>}
                     {bitTab === "estado" && <><td onClick={() => goDelayed(go)} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><Badge estado={f.estado} /></td><td onClick={go} style={{ ...td, padding: "6px 4px", cursor: "pointer" }}><DBadge status={f.dineroStatus || "SIN_FONDOS"} /></td></>}
-                    {(bitTab === "fantasmas" || bitTab === "todos") && <>
+                    {(bitTab === "todos") && <>
                       <td style={td}><EditCell f={f} field="costoMercancia" numeric style={{ color: "#DC2626", fontFamily: "monospace", fontWeight: 700, textAlign: "right" }} /></td>
                       <td onClick={go} style={{ ...td, textAlign: "center", cursor: "pointer" }}>{f.clientePago ? <span style={{ background: "#D1FAE5", color: "#065F46", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>✅ PAGADO</span> : (f.abonoMercancia || 0) > 0 ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, display: "inline-block" }}>⚠️ {fmt(f.abonoMercancia)}</span> : f.costoDesconocido ? <span style={{ background: "#FEF3C7", color: "#92400E", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❓ POR DEFINIR</span> : <span style={{ background: "#FEE2E2", color: "#991B1B", padding: "3px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700, display: "inline-block" }}>❌ PENDIENTE</span>}
                       </td>
@@ -2173,6 +2230,7 @@ export default function App() {
               })}</tbody>
           </table>
         </div>
+        )}
         {confirm && (() => { const cf = data.fantasmas.find(x => x.id === confirm); return cf ? (
           <Modal title="Eliminar pedido" onClose={() => setConfirm(null)} w={380}>
             <p style={{ margin: "0 0 8px", fontSize: 12 }}><strong>{cf.cliente}</strong> — {cf.descripcion} ({fmt(cf.costoMercancia)})</p>
