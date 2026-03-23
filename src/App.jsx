@@ -948,6 +948,7 @@ export default function App() {
       }
       // Sync dineroStatus
       const PRESERVE_STATUS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
+      const _fantasmasBeforeSync = d.fantasmas; // snapshot before corrections
       d.fantasmas = d.fantasmas.map(f => {
         // soloRecoger without real flete cost always stays NO_APLICA
         if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
@@ -970,6 +971,13 @@ export default function App() {
       prevDataRef.current = d;
       setData(d);
       setLoading(false);
+      // Persist any dineroStatus corrections back to Firestore so realtime listener doesn't overwrite them
+      const _corrected = d.fantasmas.filter((f, i) => f !== _fantasmasBeforeSync[i]);
+      if (_corrected.length > 0) {
+        const _fixBatch = writeBatch(db);
+        _corrected.forEach(f => _fixBatch.set(doc(db, "fantasmas", f.id), f));
+        _fixBatch.commit().catch(e => console.warn("Auto dineroStatus fix save failed:", e));
+      }
     });
 
     // Real-time listener — syncs fantasmas changes from other users instantly
@@ -1592,7 +1600,13 @@ export default function App() {
                 comisionMonto: wasAlreadyCobrada ? f.comisionMonto : (cobrar ? comCalc : 0),
                 comisionPendiente: wasAlreadyCobrada ? false : cobrar,
                 comisionCobrada: wasAlreadyCobrada ? true : false,
-                dineroStatus: (f.costoDesconocido && costoReal > 0 && !f.soloRecoger) ? "SIN_FONDOS" : f.dineroStatus
+                dineroStatus: (() => {
+                  const _preserveEdit = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE"];
+                  // When a costoDesconocido pedido now has a real cost, reset to SIN_FONDOS so money flow can start
+                  if (f.costoDesconocido && costoReal > 0 && !f.soloRecoger) return "SIN_FONDOS";
+                  // Only preserve in-transit statuses; let updF auto-calc the rest
+                  return _preserveEdit.includes(f.dineroStatus) ? f.dineroStatus : undefined;
+                })()
               });
               setEd(false);
             }}>Guardar</Btn>
@@ -2265,12 +2279,21 @@ export default function App() {
       }
 
       // apply all updates
+      const PRESERVE_DS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
       let newData = { ...data };
       for (const u of updates) {
-        newData = { ...newData, fantasmas: newData.fantasmas.map(f => f.id !== u.id ? f : {
-          ...f, ...u.ch, fechaActualizacion: today(),
-          movimientos: [...(f.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: u.concepto, monto: u.monto, fecha: pagoForm.fecha }],
-          historial: [...(f.historial || []), { fecha: today(), accion: `Pago: ${fmt(u.monto)} (${u.concepto})`, quien: role }],
+        newData = { ...newData, fantasmas: newData.fantasmas.map(f => {
+          if (f.id !== u.id) return f;
+          const updated = {
+            ...f, ...u.ch, fechaActualizacion: today(),
+            movimientos: [...(f.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: u.concepto, monto: u.monto, fecha: pagoForm.fecha }],
+            historial: [...(f.historial || []), { fecha: today(), accion: `Pago: ${fmt(u.monto)} (${u.concepto})`, quien: role }],
+          };
+          if (!PRESERVE_DS.includes(updated.dineroStatus)) {
+            const ds = calcDineroStatus(updated);
+            if (ds) updated.dineroStatus = ds;
+          }
+          return updated;
         }) };
       }
       persist(newData);
@@ -2582,14 +2605,14 @@ export default function App() {
                       const aplicar = Math.min(remaining, debe);
                       const nuevoAbono = (f.abonoMercancia || 0) + aplicar;
                       const pagado = nuevoAbono >= (f.totalVenta || f.costoMercancia);
-                      newData = { ...newData, fantasmas: newData.fantasmas.map(x => x.id !== fId ? x : { ...x, abonoMercancia: nuevoAbono, clientePago: pagado, clientePagoMonto: nuevoAbono + (x.abonoFlete || 0), fechaActualizacion: today(), movimientos: [...(x.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: `Pago mercancía${pagoForm.nota ? " - " + pagoForm.nota : ""}`, monto: aplicar, fecha: pagoForm.fecha }], historial: [...(x.historial || []), { fecha: today(), accion: `Pago merc: ${fmt(aplicar)}`, quien: role }] }) };
+                      newData = { ...newData, fantasmas: newData.fantasmas.map(x => { if (x.id !== fId) return x; const upd = { ...x, abonoMercancia: nuevoAbono, clientePago: pagado, clientePagoMonto: nuevoAbono + (x.abonoFlete || 0), fechaActualizacion: today(), movimientos: [...(x.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: `Pago mercancía${pagoForm.nota ? " - " + pagoForm.nota : ""}`, monto: aplicar, fecha: pagoForm.fecha }], historial: [...(x.historial || []), { fecha: today(), accion: `Pago merc: ${fmt(aplicar)}`, quien: role }] }; const _PRES = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"]; if (!_PRES.includes(upd.dineroStatus)) { const ds = calcDineroStatus(upd); if (ds) upd.dineroStatus = ds; } return upd; }) };
                       remaining -= aplicar;
                     } else {
                       const debe = (f.costoFlete || 0) - (f.abonoFlete || 0);
                       const aplicar = Math.min(remaining, debe);
                       const nuevoAbono = (f.abonoFlete || 0) + aplicar;
                       const pagado = nuevoAbono >= (f.costoFlete || 0);
-                      newData = { ...newData, fantasmas: newData.fantasmas.map(x => x.id !== fId ? x : { ...x, abonoFlete: nuevoAbono, fletePagado: pagado, clientePagoMonto: (x.abonoMercancia || 0) + nuevoAbono, fechaActualizacion: today(), movimientos: [...(x.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: `Pago flete${pagoForm.nota ? " - " + pagoForm.nota : ""}`, monto: aplicar, fecha: pagoForm.fecha }], historial: [...(x.historial || []), { fecha: today(), accion: `Pago flete: ${fmt(aplicar)}`, quien: role }] }) };
+                      newData = { ...newData, fantasmas: newData.fantasmas.map(x => { if (x.id !== fId) return x; const upd = { ...x, abonoFlete: nuevoAbono, fletePagado: pagado, clientePagoMonto: (x.abonoMercancia || 0) + nuevoAbono, fechaActualizacion: today(), movimientos: [...(x.movimientos || []), { id: Date.now() + Math.random(), tipo: "Entrada", concepto: `Pago flete${pagoForm.nota ? " - " + pagoForm.nota : ""}`, monto: aplicar, fecha: pagoForm.fecha }], historial: [...(x.historial || []), { fecha: today(), accion: `Pago flete: ${fmt(aplicar)}`, quien: role }] }; const _PRES2 = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"]; if (!_PRES2.includes(upd.dineroStatus)) { const ds = calcDineroStatus(upd); if (ds) upd.dineroStatus = ds; } return upd; }) };
                       remaining -= aplicar;
                     }
                   });
