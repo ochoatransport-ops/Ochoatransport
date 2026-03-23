@@ -4667,30 +4667,32 @@ export default function App() {
                   const isFlete = tForm.tipo === "flete";
                   let peds = data.fantasmas.filter(f => {
                     if (f.estado === "CERRADO") return false;
-                    // Exclude if already paid for this type
+                    // Exclude only if FULLY paid for this type
                     if (isFlete && f.fletePagado) return false;
                     if (!isFlete && f.clientePago) return false;
-                    // Exclude if already has a pending transfer for this type
-                    const yaTransferido = (data.transferencias || []).some(t =>
-                      t.pedidoId === f.id && t.tipo === tForm.tipo && !t.confirmada && !t.noRecibida && t.id !== editId
-                    );
-                    if (yaTransferido) return false;
                     return true;
                   });
                   if (tForm.pedSearch) { const s = tForm.pedSearch.toLowerCase(); peds = peds.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s)); }
                   if (peds.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes de {isFlete ? "flete" : "fantasma"}</div>;
                   return peds.slice(0, 15).map(f => {
                     const sel = tForm.pedidoId === f.id;
-                    const monto = tForm.tipo === "flete" ? (f.costoFlete || 0) : f.costoMercancia;
+                    const costoTotal = tForm.tipo === "flete" ? (f.costoFlete || 0) : (f.totalVenta || f.costoMercancia);
+                    const abonadoHasta = tForm.tipo === "flete" ? (f.abonoFlete || 0) : (f.abonoMercancia || 0);
+                    const transPend = (data.transferencias || []).filter(t => t.pedidoId === f.id && t.tipo === tForm.tipo && !t.confirmada && !t.noRecibida && t.id !== editId);
+                    const montoPendTrans = transPend.reduce((s, t) => s + (t.montoUSD || 0), 0);
+                    const saldoPendiente = Math.max(0, costoTotal - abonadoHasta - montoPendTrans);
                     return (
-                      <div key={f.id} onClick={() => setTForm({ ...tForm, pedidoId: f.id, pedSearch: "" })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#F5F3FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #7C3AED" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "#fff"; }}>
+                      <div key={f.id} onClick={() => setTForm({ ...tForm, pedidoId: f.id, pedSearch: f.cliente })} style={{ padding: "6px 10px", cursor: "pointer", background: sel ? "#F5F3FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #7C3AED" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "#fff"; }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                           <span style={{ fontSize: 9, fontFamily: "monospace", fontWeight: 700, color: "#9CA3AF" }}>{f.id}</span>
                           <strong style={{ fontSize: 11 }}>{f.cliente}</strong>
                           {sel && <span style={{ fontSize: 8, background: "#7C3AED", color: "#fff", padding: "1px 5px", borderRadius: 3 }}>✓</span>}
-                          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: tForm.tipo === "flete" ? "#2563EB" : "#DC2626" }}>{fmt(monto)}</span>
+                          {transPend.length > 0 && <span style={{ fontSize: 8, background: "#FEF3C7", color: "#92400E", padding: "1px 5px", borderRadius: 3 }}>{transPend.length} trans. pend.</span>}
+                          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: saldoPendiente <= 0 ? "#059669" : tForm.tipo === "flete" ? "#2563EB" : "#DC2626" }}>
+                            {saldoPendiente <= 0 ? "✓ Cubierto" : `Saldo: ${fmt(saldoPendiente)}`}
+                          </span>
                         </div>
-                        <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}</div>
+                        <div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion}{montoPendTrans > 0 ? <span style={{ color: "#D97706", fontWeight: 600 }}> · En tránsito: {fmt(montoPendTrans)}</span> : ""}</div>
                       </div>
                     );
                   });
