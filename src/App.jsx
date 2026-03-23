@@ -804,6 +804,43 @@ export default function App() {
   const [periodoTipo, setPeriodoTipo] = useState("semana"); // global, año, mes, semana
   const [periodoOffset, setPeriodoOffset] = useState(0); // 0=current, -1=previous, etc
   const [menuOpen, setMenuOpen] = useState(false);
+  // Bitácora and ListView have their own period, default global
+  const [bitPeriodoTipo, setBitPeriodoTipo] = useState("global");
+  const [bitPeriodoOffset, setBitPeriodoOffset] = useState(0);
+  const [listPeriodoTipo, setListPeriodoTipo] = useState("semana");
+  const [listPeriodoOffset, setListPeriodoOffset] = useState(0);
+
+  // Generic date range helper — works with any tipo/offset
+  const getDateRangeFor = (tipo, offset) => {
+    if (tipo === "global") return null;
+    const now = new Date();
+    let start, end;
+    if (tipo === "año") {
+      const y = now.getFullYear() + offset;
+      start = new Date(y, 0, 1); end = new Date(y, 11, 31);
+    } else if (tipo === "mes") {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      start = d; end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    } else if (tipo === "semana") {
+      const d = new Date(now);
+      d.setDate(d.getDate() + offset * 7);
+      const day = d.getDay(); const diff = day === 0 ? -6 : 1 - day;
+      start = new Date(d); start.setDate(d.getDate() + diff);
+      end = new Date(start); end.setDate(start.getDate() + 6);
+    }
+    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+  };
+  const periodoLabelFor = (tipo, offset) => {
+    if (tipo === "global") return "Global";
+    const r = getDateRangeFor(tipo, offset); if (!r) return "";
+    if (tipo === "año") return `Año ${new Date(r.start).getFullYear()}`;
+    if (tipo === "mes") { const d = new Date(r.start); return d.toLocaleDateString("es-MX", { year: "numeric", month: "long" }).toUpperCase(); }
+    if (tipo === "semana") return `${new Date(r.start).toLocaleDateString("es-MX", { day: "numeric", month: "short" })} — ${new Date(r.end).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
+  };
+  const filterByDateFor = (list, dateField = "fechaCreacion", tipo, offset) => {
+    const r = getDateRangeFor(tipo, offset); if (!r) return list;
+    return list.filter(f => { const d = f[dateField] || f.fechaCreacion || ""; return d >= r.start && d <= r.end; });
+  };
 
   // Date range helper
   const getDateRange = () => {
@@ -1235,7 +1272,7 @@ export default function App() {
   const dateFilteredFantasmas = useMemo(() => filterByDate(data?.fantasmas || []), [data, periodoTipo, periodoOffset]);
 
   const filtered = useMemo(() => {
-    let list = roleFantasmas;
+    let list = filterByDateFor(roleFantasmas, "fechaCreacion", listPeriodoTipo, listPeriodoOffset);
     if (search) { const s = search.toLowerCase().trim(); const sNum = s.replace(/[^0-9]/g, ""); list = list.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor || "").toLowerCase().includes(s) || (f.vendedor || "").toLowerCase().includes(s) || (f.tipoMercancia || "").toLowerCase().includes(s)); }
     if (fEst !== "ALL") list = list.filter(f => f.estado === fEst);
     if (fPagoMerc === "pagado") list = list.filter(f => f.clientePago);
@@ -1243,7 +1280,7 @@ export default function App() {
     if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado);
     if (fPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && f.costoFlete > 0);
     return list;
-  }, [roleFantasmas, search, fEst, fPagoMerc, fPagoFlete]);
+  }, [roleFantasmas, search, fEst, fPagoMerc, fPagoFlete, listPeriodoTipo, listPeriodoOffset]);
 
   const sel = useMemo(() => data?.fantasmas.find(f => f.id === selId), [data, selId]);
 
@@ -1639,8 +1676,30 @@ export default function App() {
   const ListView = () => {
     const searchRef = useCallback(node => { if (node) node.focus(); }, []);
     const availEstados = role === "admin" ? ESTADO_KEYS : TJ_ESTADOS;
+    const lTipo = listPeriodoTipo; const setLTipo = setListPeriodoTipo;
+    const lOff  = listPeriodoOffset; const setLOff  = setListPeriodoOffset;
+    const MiniPeriodBar = ({ tipo, setTipo, off, setOff, label }) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#F3F4F6", borderRadius: 7, padding: "4px 8px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "#6B7280", fontWeight: 600 }}>📅</span>
+        <div style={{ display: "flex", gap: 2, background: "#E5E7EB", borderRadius: 5, padding: 2 }}>
+          {[{ k: "global", l: "Global" }, { k: "año", l: "Año" }, { k: "mes", l: "Mes" }, { k: "semana", l: "Sem." }].map(p => (
+            <button key={p.k} onClick={() => { setTipo(p.k); setOff(0); }} style={{ padding: "3px 8px", borderRadius: 4, border: "none", background: tipo === p.k ? "#1A2744" : "transparent", color: tipo === p.k ? "#fff" : "#6B7280", fontWeight: tipo === p.k ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{p.l}</button>
+          ))}
+        </div>
+        {tipo !== "global" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <button onClick={() => setOff(o => o - 1)} style={{ background: "#fff", border: "1px solid #D1D5DB", borderRadius: 4, padding: "2px 7px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", color: "#374151" }}>←</button>
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#1A2744", minWidth: 100, textAlign: "center" }}>{label}</span>
+            <button onClick={() => setOff(o => o + 1)} disabled={off >= 0} style={{ background: off >= 0 ? "#F9FAFB" : "#fff", border: "1px solid #D1D5DB", borderRadius: 4, padding: "2px 7px", cursor: off >= 0 ? "not-allowed" : "pointer", fontSize: 11, fontFamily: "inherit", color: off >= 0 ? "#D1D5DB" : "#374151" }}>→</button>
+          </div>
+        )}
+      </div>
+    );
     return (
       <div>
+        <div style={{ display: "flex", gap: 5, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <MiniPeriodBar tipo={lTipo} setTipo={setLTipo} off={lOff} setOff={setLOff} label={periodoLabelFor(lTipo, lOff)} />
+        </div>
         <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: "1 1 160px", minWidth: 140 }}>
             <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
@@ -2019,6 +2078,27 @@ export default function App() {
     const bPagoFlete = bitPagoFlete; const setBPagoFlete = setBitPagoFlete;
     const bEstado = bitEstado; const setBEstado = setBitEstado;
     const [editCell, setEditCell] = useState(null); // { id, field, val }
+    const bTipo = bitPeriodoTipo; const setBTipo = setBitPeriodoTipo;
+    const bOff  = bitPeriodoOffset; const setBOff  = setBitPeriodoOffset;
+
+    // Mini period bar renderer (reused in ListView too)
+    const MiniPeriodBar = ({ tipo, setTipo, off, setOff, label }) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#F3F4F6", borderRadius: 7, padding: "4px 8px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: "#6B7280", fontWeight: 600 }}>📅</span>
+        <div style={{ display: "flex", gap: 2, background: "#E5E7EB", borderRadius: 5, padding: 2 }}>
+          {[{ k: "global", l: "Global" }, { k: "año", l: "Año" }, { k: "mes", l: "Mes" }, { k: "semana", l: "Sem." }].map(p => (
+            <button key={p.k} onClick={() => { setTipo(p.k); setOff(0); }} style={{ padding: "3px 8px", borderRadius: 4, border: "none", background: tipo === p.k ? "#1A2744" : "transparent", color: tipo === p.k ? "#fff" : "#6B7280", fontWeight: tipo === p.k ? 700 : 500, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{p.l}</button>
+          ))}
+        </div>
+        {tipo !== "global" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <button onClick={() => setOff(o => o - 1)} style={{ background: "#fff", border: "1px solid #D1D5DB", borderRadius: 4, padding: "2px 7px", cursor: "pointer", fontSize: 11, fontFamily: "inherit", color: "#374151" }}>←</button>
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#1A2744", minWidth: 100, textAlign: "center" }}>{label}</span>
+            <button onClick={() => setOff(o => o + 1)} disabled={off >= 0} style={{ background: off >= 0 ? "#F9FAFB" : "#fff", border: "1px solid #D1D5DB", borderRadius: 4, padding: "2px 7px", cursor: off >= 0 ? "not-allowed" : "pointer", fontSize: 11, fontFamily: "inherit", color: off >= 0 ? "#D1D5DB" : "#374151" }}>→</button>
+          </div>
+        )}
+      </div>
+    );
 
     const EMPAQUES = ["Caja", "Gaylor", "Pallet", "Sobre", "Bulto", "Bolsa", "Sandillero", "Step Completa", "Espacio", "Desconocido", "Otro"];
 
@@ -2070,7 +2150,7 @@ export default function App() {
     const clis = [...new Set(data.fantasmas.map(f => f.cliente).filter(Boolean))];
     const vends = [...new Set(data.fantasmas.map(f => f.vendedor).filter(Boolean))];
 
-    let list = filterByDate(data.fantasmas, "fechaCreacion").filter(f => f.estado !== "CERRADO");
+    let list = filterByDateFor(data.fantasmas, "fechaCreacion", bTipo, bOff).filter(f => f.estado !== "CERRADO");
     if (fProv !== "ALL") list = list.filter(f => f.proveedor === fProv);
     if (fCli !== "ALL") list = list.filter(f => f.cliente === fCli);
     if (fVend !== "ALL") list = list.filter(f => f.vendedor === fVend);
@@ -2091,7 +2171,8 @@ export default function App() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Bitácora</h2>
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+            <MiniPeriodBar tipo={bTipo} setTipo={setBTipo} off={bOff} setOff={setBOff} label={periodoLabelFor(bTipo, bOff)} />
             <Btn sz="sm" v={modo === "axia" ? "primary" : "secondary"} onClick={() => setModo("axia")}>📋 Completa</Btn>
             <Btn sz="sm" v={modo === "status" ? "primary" : "secondary"} onClick={() => setModo("status")}>📊 Compacta</Btn>
             <Btn v="secondary" sz="sm" onClick={exportCSV}><I.Dl /> CSV</Btn>
