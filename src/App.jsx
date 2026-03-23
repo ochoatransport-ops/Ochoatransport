@@ -948,12 +948,27 @@ export default function App() {
       }
       // Sync dineroStatus
       const PRESERVE_STATUS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
+      // ── Repair: detect race-condition orphans ─────────────────────
+      // If a fantasma is SOBRE_LISTO but already has a "SOBRE USA: F-XXXX" egreso in gastosAdmin,
+      // the dineroStatus write was lost — correct it to DINERO_CAMINO
+      const _sobreEgresoIds = new Set(
+        (d.gastosAdmin || [])
+          .filter(m => (m.concepto || "").startsWith("SOBRE USA:") && m.tipoMov === "egreso")
+          .map(m => { const match = (m.concepto || "").match(/F-\d+/); return match ? match[0] : null; })
+          .filter(Boolean)
+      );
+      // ─────────────────────────────────────────────────────────────
       const _fantasmasBeforeSync = d.fantasmas; // snapshot before corrections
       d.fantasmas = d.fantasmas.map(f => {
         // soloRecoger without real flete cost always stays NO_APLICA
         if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
           if (f.dineroStatus !== "NO_APLICA") return { ...f, dineroStatus: "NO_APLICA" };
           return f;
+        }
+        // Repair: SOBRE_LISTO but egreso already in gastosAdmin → race condition, fix to DINERO_CAMINO
+        if (f.dineroStatus === "SOBRE_LISTO" && _sobreEgresoIds.has(f.id)) {
+          console.log(`[repair] ${f.id} corrected SOBRE_LISTO → DINERO_CAMINO (orphaned egreso found)`);
+          return { ...f, dineroStatus: "DINERO_CAMINO", adelantoAdmin: true };
         }
         // Never touch statuses that represent money in transit or already received
         if (PRESERVE_STATUS.includes(f.dineroStatus)) return f;
@@ -3193,7 +3208,10 @@ export default function App() {
           const monto = f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia;
           const refId = Date.now() + i * 2;
           nuevosEgresos.push({ id: refId, concepto: `SOBRE USA: ${fId} — ${f.cliente}${f.descripcion ? ' · ' + f.descripcion : ''}`, monto, montoUSD: monto, montoMXN: 0, moneda: "USD", destino: "BODEGA_USA", fecha: today(), nota: f.descripcion || "", tipoMov: "egreso", adelantoRef: refId + 1 });
-          nuevosAdelantos.push({ id: refId + 1, pedidoId: fId, monto, fecha: today(), nota: `Sobre enviado a USA — ${f.cliente}`, recuperado: false, movRef: refId });
+          // Only create adelanto if there's a real amount to recover — $0 pedidos (soloRecoger, etc.) don't need tracking
+          if (monto > 0) {
+            nuevosAdelantos.push({ id: refId + 1, pedidoId: fId, monto, fecha: today(), nota: `Sobre enviado a USA — ${f.cliente}`, recuperado: false, movRef: refId });
+          }
         });
         nd.gastosAdmin = [...(nd.gastosAdmin || []), ...nuevosEgresos];
         nd.adelantosAdmin = [...(nd.adelantosAdmin || []), ...nuevosAdelantos];
@@ -6193,6 +6211,8 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
           const pf = data.fantasmas.find(x => x.id === adel.pedidoId);
           const totalPedido = pf ? (pf.totalVenta || pf.costoMercancia || 0) : adel.monto;
           const abonoActual = pf ? (pf.abonoMercancia || 0) : 0;
+          // $0 adelantos (soloRecoger, costo $0) are always "complete" — nothing to recover
+          const esAdelantoZero = adel.monto === 0 || adel.monto == null;
 
           // What was already paid via confirmed transfers
           const transConfirmadas = (data.transferencias || []).filter(t => t.pedidoId === adel.pedidoId && t.confirmada && t.tipo === "fantasma");
@@ -6206,9 +6226,9 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
           const efectivoCash = Math.max(0, Math.round((abonoActual - transTotal) * 100) / 100);
 
           const totalRecibido = abonoActual;
-          const faltante = Math.max(0, totalPedido - totalRecibido);
-          const pagadoCompleto = totalRecibido >= totalPedido || (pf?.clientePago && totalRecibido >= totalPedido * 0.999);
-          const hayPagosParciales = totalRecibido > 0 && !pagadoCompleto;
+          const faltante = esAdelantoZero ? 0 : Math.max(0, totalPedido - totalRecibido);
+          const pagadoCompleto = esAdelantoZero || totalRecibido >= totalPedido || (pf?.clientePago && totalRecibido >= totalPedido * 0.999);
+          const hayPagosParciales = !esAdelantoZero && totalRecibido > 0 && !pagadoCompleto;
 
           // Pre-fill form when opening (if fields are empty)
           const transPreFill = transTotal > 0 ? String(Math.round(transTotal * 100) / 100) : "";
@@ -6336,7 +6356,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                   const partes = [trans > 0 ? `${fmt(trans)} trans` : "", ef > 0 ? `${fmt(ef)} efec USD` : "", mxnUsd > 0 ? `${fmt(mxn)} MXN@${tc}` : ""].filter(Boolean).join(" + ");
                   const vias = [trans > 0 ? "transferencia" : "", (ef > 0 || mxnUsd > 0) ? "efectivo" : ""].filter(Boolean).join("+");
                   return (
-                    <Btn disabled={total <= 0} onClick={() => {
+                    <Btn disabled={total <= 0 && adel.monto > 0} onClick={() => {
                       const newAdel = adelantos.map(a => a.id !== showRecuperar ? a : { ...a, recuperado: true, fechaRecuperacion: recForm.fecha, viaRecuperacion: vias, montoRecuperado: total, montoTrans: trans, montoEfectivo: ef + mxnUsd, detalleRecuperacion: partes, nota: recForm.nota });
                       let nd = { ...data, adelantosAdmin: newAdel };
                       // ONLY cash creates gastosAdmin ingreso — transfers are already in the system
