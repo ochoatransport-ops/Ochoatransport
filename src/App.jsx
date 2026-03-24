@@ -986,7 +986,8 @@ export default function App() {
       // Sync dineroStatus
       const PRESERVE_STATUS = ["DINERO_CAMINO","SOBRE_LISTO","DINERO_USA","COLCHON_USADO","TRANS_PENDIENTE","NO_APLICA"];
       // ── Repair: detect race-condition orphans ─────────────────────
-      // If a fantasma is SOBRE_LISTO but already has a "SOBRE USA: F-XXXX" egreso in gastosAdmin,
+      // If a fantasma has ANY status except DINERO_CAMINO/DINERO_USA/COLCHON_USADO
+      // but already has a "SOBRE USA: F-XXXX" egreso in gastosAdmin,
       // the dineroStatus write was lost — correct it to DINERO_CAMINO
       const _sobreEgresoIds = new Set(
         (d.gastosAdmin || [])
@@ -994,6 +995,8 @@ export default function App() {
           .map(m => { const match = (m.concepto || "").match(/F-\d+/); return match ? match[0] : null; })
           .filter(Boolean)
       );
+      // Statuses that are "further along" than DINERO_CAMINO — don't revert those
+      const _ALREADY_IN_USA = new Set(["DINERO_USA", "COLCHON_USADO", "COLCHON_REPUESTO"]);
       // ─────────────────────────────────────────────────────────────
       const _fantasmasBeforeSync = d.fantasmas; // snapshot before corrections
       d.fantasmas = d.fantasmas.map(f => {
@@ -1002,9 +1005,9 @@ export default function App() {
           if (f.dineroStatus !== "NO_APLICA") return { ...f, dineroStatus: "NO_APLICA" };
           return f;
         }
-        // Repair: SOBRE_LISTO but egreso already in gastosAdmin → race condition, fix to DINERO_CAMINO
-        if (f.dineroStatus === "SOBRE_LISTO" && _sobreEgresoIds.has(f.id)) {
-          console.log(`[repair] ${f.id} corrected SOBRE_LISTO → DINERO_CAMINO (orphaned egreso found)`);
+        // Repair: any status that ISN'T already past DINERO_CAMINO, but egreso exists → race condition
+        if (_sobreEgresoIds.has(f.id) && !_ALREADY_IN_USA.has(f.dineroStatus) && f.dineroStatus !== "DINERO_CAMINO") {
+          console.log(`[repair] ${f.id} corrected ${f.dineroStatus} → DINERO_CAMINO (sobre egreso found in gastosAdmin)`);
           return { ...f, dineroStatus: "DINERO_CAMINO", adelantoAdmin: true };
         }
         // Never touch statuses that represent money in transit or already received
