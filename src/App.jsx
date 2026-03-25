@@ -3565,15 +3565,21 @@ export default function App() {
       pedidosNuevos = pedidosNuevos.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor || "").toLowerCase().includes(s) || (f.tipoMercancia || "").toLowerCase().includes(s));
     }
 
+    // "Sin sobre" statuses — always shown regardless of period
+    const SIN_SOBRE_V = new Set(["SIN_FONDOS", "FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO", "NO_APLICA", "SOBRE_LISTO", "TRANS_PENDIENTE", "", null, undefined]);
+    // Period-filtered set for statuses that represent money in transit or received
+    const pedidosPorPeriodo = filterByDate(pedidosNuevos, "fechaActualizacion");
+
     // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
     const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && t.confirmada === true);
-    // sinSobre = pedidos sin sobre: sin fondos + pagados por cliente (tienen dinero, pueden enviar sobre)
+    // sinSobre = always visible — sin fondos + pagados por cliente (tienen dinero, pueden enviar sobre)
     const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO" || f.dineroStatus === "NO_APLICA");
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
-    const sobreEnviado = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_CAMINO");
-    const pagadoCliente = pedidosNuevos.filter(f => ["FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO"].includes(f.dineroStatus));
-    const conDineroV = pedidosNuevos.filter(f => f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO");
     const transPendientes = pedidosNuevos.filter(f => f.dineroStatus === "TRANS_PENDIENTE");
+    // These two are period-filtered
+    const sobreEnviado = pedidosPorPeriodo.filter(f => f.dineroStatus === "DINERO_CAMINO");
+    const pagadoCliente = pedidosNuevos.filter(f => ["FANTASMA_PAGADO", "FLETE_PAGADO", "TODO_PAGADO"].includes(f.dineroStatus));
+    const conDineroV = pedidosPorPeriodo.filter(f => f.dineroStatus === "DINERO_USA" || f.dineroStatus === "COLCHON_USADO");
 
     // Filter
     const grupos = vFiltro === "ALL" ? [
@@ -3694,18 +3700,24 @@ export default function App() {
           <Btn onClick={() => { setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
 
-        {/* Main tabs: Fantasmas vs Fletes */}
+        {/* Main tabs: Fantasmas vs Fletes vs Historial */}
         <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 14 }}>
           <button onClick={() => { setVentasTab("fantasmas"); setVFiltro("ALL"); }} style={{ flex: 1, padding: "9px", borderRadius: 6, border: "none", background: ventasTab === "fantasmas" ? "#fff" : "transparent", boxShadow: ventasTab === "fantasmas" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: ventasTab === "fantasmas" ? 700 : 500, fontFamily: "inherit", color: ventasTab === "fantasmas" ? "#DC2626" : "#6B7280" }}>👻 Fantasmas</button>
           <button onClick={() => { setVentasTab("fletes"); setVFiltro("ALL"); }} style={{ flex: 1, padding: "9px", borderRadius: 6, border: "none", background: ventasTab === "fletes" ? "#fff" : "transparent", boxShadow: ventasTab === "fletes" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: ventasTab === "fletes" ? 700 : 500, fontFamily: "inherit", color: ventasTab === "fletes" ? "#2563EB" : "#6B7280" }}>🚛 Fletes</button>
+          <button onClick={() => { setVentasTab("historial"); }} style={{ flex: 1, padding: "9px", borderRadius: 6, border: "none", background: ventasTab === "historial" ? "#fff" : "transparent", boxShadow: ventasTab === "historial" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 12, fontWeight: ventasTab === "historial" ? 700 : 500, fontFamily: "inherit", color: ventasTab === "historial" ? "#374151" : "#6B7280" }}>📋 Historial</button>
         </div>
 
         {/* Stats según tab */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: periodoTipo !== "global" ? 6 : 14, flexWrap: "wrap" }}>
           <Stat label="Pedidos nuevos" value={pedidosNuevos.length} color="#D97706" icon={<I.Box />} sub={`${pedidosNuevos.filter(f => f.urgente).length} urgentes`} />
           {ventasTab === "fantasmas" && <Stat label="Merc. por recibir" value={fmt(totalPorCobrarMerc)} color="#DC2626" icon={<I.Dollar />} sub={`${pendientesMerc.length} pedidos`} />}
           {ventasTab === "fletes" && <Stat label="Flete por recibir" value={fmt(totalPorCobrarFlete)} color="#2563EB" icon={<I.Truck />} sub={`${pendientesFlete.length} pedidos`} />}
         </div>
+        {periodoTipo !== "global" && ventasTab === "fantasmas" && (
+          <div style={{ fontSize: 10, color: "#6B7280", background: "#EFF6FF", borderRadius: 5, padding: "4px 10px", marginBottom: 12, display: "inline-block" }}>
+            ℹ️ <strong>Sin sobre:</strong> siempre visibles · <strong>Enviados/En USA:</strong> del período {periodoLabel()}
+          </div>
+        )}
 
         {/* Search and status tabs — solo en fantasmas */}
         {ventasTab === "fantasmas" && <>
@@ -3793,7 +3805,71 @@ export default function App() {
           </div>;
         })()}
 
-        {selCount > 0 && <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)" }}><span style={{ fontSize: 13, fontWeight: 600 }}>{selCount} seleccionado{selCount > 1 ? "s" : ""}</span><div style={{ display: "flex", gap: 6 }}><Btn v="secondary" sz="sm" onClick={() => setSelPedidos({})}>Deseleccionar</Btn><Btn onClick={() => setShowSobreModal(true)} style={{ background: "#2563EB" }}>📨 Sobre enviado a USA</Btn></div></div>}
+        {/* ── HISTORIAL TAB ─────────────────────────────────────── */}
+        {ventasTab === "historial" && (() => {
+          const histAll = filterByDate(data.fantasmas, "fechaActualizacion")
+            .filter(f => f.estado !== "CERRADO")
+            .sort((a, b) => (b.fechaActualizacion || b.fechaCreacion || "").localeCompare(a.fechaActualizacion || a.fechaCreacion || ""));
+          const byDay = {};
+          histAll.forEach(f => { const d = f.fechaActualizacion || f.fechaCreacion || "Sin fecha"; if (!byDay[d]) byDay[d] = []; byDay[d].push(f); });
+          const days = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+          if (histAll.length === 0) return (
+            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+              <p style={{ fontSize: 12 }}>No hay movimientos en este período.</p>
+            </div>
+          );
+          const totalMercH = histAll.reduce((s, f) => s + f.costoMercancia, 0);
+          return (
+            <div>
+              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 10, display: "flex", gap: 12 }}>
+                <span>{histAll.length} pedidos</span>
+                <span>👻 {fmt(totalMercH)}</span>
+              </div>
+              {days.map(day => {
+                const items = byDay[day];
+                const dayTotal = items.reduce((s, f) => s + f.costoMercancia, 0);
+                const isToday = day === today();
+                return (
+                  <div key={day} style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "5px 10px", background: isToday ? "#EFF6FF" : "#F3F4F6", borderRadius: 6, border: isToday ? "1px solid #BFDBFE" : "none" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#1E40AF" : "#374151" }}>
+                        {isToday ? "🔵 Hoy" : "📅"} {fmtD(day)}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>{items.length} pedido{items.length !== 1 ? "s" : ""} · {fmt(dayTotal)}</span>
+                    </div>
+                    {items.map(f => (
+                      <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#fff", borderRadius: 7, border: "1px solid #E5E7EB", cursor: "pointer", marginBottom: 4 }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = "#93C5FD"}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = "#E5E7EB"}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
+                            <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
+                            <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                            <Badge estado={f.estado} />
+                            <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
+                          </div>
+                          <div style={{ fontSize: 11, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {f.descripcion}{f.proveedor && <span style={{ color: "#9CA3AF" }}> · {f.proveedor}</span>}
+                            {f.ubicacionProv && <span style={{ color: "#9CA3AF" }}> (📍{f.ubicacionProv})</span>}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "#1A2744" }}>{fmt(f.costoMercancia)}</div>
+                          {f.costoFlete > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Flete: {fmt(f.costoFlete)}</div>}
+                        </div>
+                        <I.Right />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {selCount > 0 && ventasTab !== "historial" && <div style={{ position: "sticky", bottom: 16, padding: "12px 16px", background: "#1A2744", borderRadius: 10, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,.2)" }}><span style={{ fontSize: 13, fontWeight: 600 }}>{selCount} seleccionado{selCount > 1 ? "s" : ""}</span><div style={{ display: "flex", gap: 6 }}><Btn v="secondary" sz="sm" onClick={() => setSelPedidos({})}>Deseleccionar</Btn><Btn onClick={() => setShowSobreModal(true)} style={{ background: "#2563EB" }}>📨 Sobre enviado a USA</Btn></div></div>}
 
         {/* Modal: ¿De dónde sale el sobre? */}
         {showSobreModal && (() => {
