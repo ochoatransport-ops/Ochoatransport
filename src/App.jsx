@@ -812,6 +812,7 @@ export default function App() {
   const [bitPeriodoOffset, setBitPeriodoOffset] = useState(0);
   const [listPeriodoTipo, setListPeriodoTipo] = useState("semana");
   const [listPeriodoOffset, setListPeriodoOffset] = useState(0);
+  const [listTab, setListTab] = useState("pedidos"); // "pedidos" | "historial"
 
   // Generic date range helper — works with any tipo/offset
   const getDateRangeFor = (tipo, offset) => {
@@ -1281,15 +1282,28 @@ export default function App() {
   // Date-filtered fantasmas for stats, ventas list, bitacora
   const dateFilteredFantasmas = useMemo(() => filterByDate(data?.fantasmas || []), [data, periodoTipo, periodoOffset]);
 
+  // Statuses that represent "sin sobre" — always visible regardless of period
+  const SIN_SOBRE_STATUS = new Set(["SIN_FONDOS", "SOBRE_LISTO", "TRANS_PENDIENTE", null, undefined, ""]);
+
   const filtered = useMemo(() => {
-    let list = filterByDateFor(roleFantasmas, "fechaCreacion", listPeriodoTipo, listPeriodoOffset);
-    if (search) { const s = search.toLowerCase().trim(); const sNum = s.replace(/[^0-9]/g, ""); list = list.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor || "").toLowerCase().includes(s) || (f.vendedor || "").toLowerCase().includes(s) || (f.tipoMercancia || "").toLowerCase().includes(s)); }
-    if (fEst !== "ALL") list = list.filter(f => f.estado === fEst);
-    if (fPagoMerc === "pagado") list = list.filter(f => f.clientePago);
-    if (fPagoMerc === "pendiente") list = list.filter(f => !f.clientePago);
-    if (fPagoFlete === "pagado") list = list.filter(f => f.fletePagado);
-    if (fPagoFlete === "pendiente") list = list.filter(f => !f.fletePagado && f.costoFlete > 0);
-    return list;
+    const applyTextFilters = (list) => {
+      let l = list;
+      if (search) { const s = search.toLowerCase().trim(); const sNum = s.replace(/[^0-9]/g, ""); l = l.filter(f => f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (sNum && f.id.includes(sNum)) || (f.proveedor || "").toLowerCase().includes(s) || (f.vendedor || "").toLowerCase().includes(s) || (f.tipoMercancia || "").toLowerCase().includes(s)); }
+      if (fEst !== "ALL") l = l.filter(f => f.estado === fEst);
+      if (fPagoMerc === "pagado") l = l.filter(f => f.clientePago);
+      if (fPagoMerc === "pendiente") l = l.filter(f => !f.clientePago);
+      if (fPagoFlete === "pagado") l = l.filter(f => f.fletePagado);
+      if (fPagoFlete === "pendiente") l = l.filter(f => !f.fletePagado && f.costoFlete > 0);
+      return l;
+    };
+    // "Sin sobre" pedidos: always show (no period filter)
+    const sinSobre = roleFantasmas.filter(f => SIN_SOBRE_STATUS.has(f.dineroStatus || ""));
+    // Everything else: filtered by period
+    const conSobre = filterByDateFor(
+      roleFantasmas.filter(f => !SIN_SOBRE_STATUS.has(f.dineroStatus || "")),
+      "fechaActualizacion", listPeriodoTipo, listPeriodoOffset
+    );
+    return applyTextFilters([...sinSobre, ...conSobre]);
   }, [roleFantasmas, search, fEst, fPagoMerc, fPagoFlete, listPeriodoTipo, listPeriodoOffset]);
 
   const sel = useMemo(() => data?.fantasmas.find(f => f.id === selId), [data, selId]);
@@ -1707,9 +1721,17 @@ export default function App() {
     );
     return (
       <div>
-        <div style={{ display: "flex", gap: 5, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Period bar + tabs */}
+        <div style={{ display: "flex", gap: 5, marginBottom: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
           <MiniPeriodBar tipo={lTipo} setTipo={setLTipo} off={lOff} setOff={setLOff} label={periodoLabelFor(lTipo, lOff)} />
+          <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3 }}>
+            <button onClick={() => setListTab("pedidos")} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: listTab === "pedidos" ? "#fff" : "transparent", boxShadow: listTab === "pedidos" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: listTab === "pedidos" ? 700 : 500, fontFamily: "inherit", color: listTab === "pedidos" ? "#1A2744" : "#6B7280" }}>📦 Pedidos</button>
+            <button onClick={() => setListTab("historial")} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: listTab === "historial" ? "#fff" : "transparent", boxShadow: listTab === "historial" ? "0 1px 3px rgba(0,0,0,.1)" : "none", cursor: "pointer", fontSize: 11, fontWeight: listTab === "historial" ? 700 : 500, fontFamily: "inherit", color: listTab === "historial" ? "#1A2744" : "#6B7280" }}>📋 Historial</button>
+          </div>
         </div>
+
+        {/* ── PEDIDOS TAB ─────────────────────────────────────────── */}
+        {listTab === "pedidos" && (<>
         <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: "1 1 160px", minWidth: 140 }}>
             <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
@@ -1731,6 +1753,11 @@ export default function App() {
           </select>
           <Btn onClick={() => { setShowNew(true); }}><I.Plus /> Nuevo Pedido</Btn>
         </div>
+        {lTipo !== "global" && (
+          <div style={{ fontSize: 10, color: "#6B7280", background: "#EFF6FF", borderRadius: 5, padding: "4px 10px", marginBottom: 8, display: "inline-block" }}>
+            ℹ️ Pedidos <strong>sin sobre</strong> siempre visibles · Enviados/pagados del período: <strong>{periodoLabelFor(lTipo, lOff)}</strong>
+          </div>
+        )}
         <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{filtered.length} pedido{filtered.length !== 1 ? "s" : ""}</div>
         {filtered.length === 0 ? <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}><p style={{ fontSize: 12 }}>No hay pedidos{search || fEst !== "ALL" ? " con esos filtros" : " en esta vista"}.</p></div> : (() => {
           // Group by bodega for USA role
@@ -1783,6 +1810,83 @@ export default function App() {
           }
 
           return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{filtered.map(renderItem)}</div>;
+        })()}
+        </>)}
+
+        {/* ── HISTORIAL TAB ────────────────────────────────────────── */}
+        {listTab === "historial" && (() => {
+          // All pedidos filtered by list period, sorted by fechaActualizacion desc
+          const histList = filterByDateFor(roleFantasmas, "fechaActualizacion", lTipo, lOff)
+            .filter(f => f.estado !== "CERRADO")
+            .sort((a, b) => (b.fechaActualizacion || b.fechaCreacion || "").localeCompare(a.fechaActualizacion || a.fechaCreacion || ""));
+
+          // Group by date
+          const byDay = {};
+          histList.forEach(f => {
+            const d = f.fechaActualizacion || f.fechaCreacion || "Sin fecha";
+            if (!byDay[d]) byDay[d] = [];
+            byDay[d].push(f);
+          });
+          const days = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+
+          const renderHistItem = (f) => (
+            <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#fff", borderRadius: 7, border: "1px solid #E5E7EB", cursor: "pointer", marginBottom: 4 }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "#93C5FD"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "#E5E7EB"}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
+                  <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
+                  <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                  <Badge estado={f.estado} />
+                  <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
+                </div>
+                <div style={{ fontSize: 11, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.descripcion}{f.proveedor && <span style={{ color: "#9CA3AF" }}> · {f.proveedor}</span>}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "#1A2744" }}>{fmt(f.costoMercancia)}</div>
+                {f.costoFlete > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Flete: {fmt(f.costoFlete)}</div>}
+              </div>
+              <I.Right />
+            </div>
+          );
+
+          if (histList.length === 0) return (
+            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+              <p style={{ fontSize: 12 }}>No hay movimientos en este período.</p>
+            </div>
+          );
+
+          const totalMerc = histList.reduce((s, f) => s + f.costoMercancia, 0);
+          return (
+            <div>
+              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 10, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <span>{histList.length} pedidos</span>
+                <span>👻 {fmt(totalMerc)}</span>
+              </div>
+              {days.map(day => {
+                const items = byDay[day];
+                const dayTotal = items.reduce((s, f) => s + f.costoMercancia, 0);
+                const isToday = day === today();
+                return (
+                  <div key={day} style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "5px 10px", background: isToday ? "#EFF6FF" : "#F3F4F6", borderRadius: 6, border: isToday ? "1px solid #BFDBFE" : "none" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#1E40AF" : "#374151" }}>
+                        {isToday ? "🔵 Hoy" : "📅"} {fmtD(day)}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>
+                        {items.length} pedido{items.length !== 1 ? "s" : ""} · {fmt(dayTotal)}
+                      </span>
+                    </div>
+                    {items.map(renderHistItem)}
+                  </div>
+                );
+              })}
+            </div>
+          );
         })()}
       </div>
     );
@@ -2388,10 +2492,11 @@ export default function App() {
       persist({ ...data, vendedores: (data.vendedores || []).filter(v => v !== name) });
     };
     const cm = useMemo(() => {
+      const periodFantasmas = filterByDate(data.fantasmas, "fechaCreacion");
       const m = {};
-      // Include registered clientes even if they have no pedidos
+      // Include registered clientes even if they have no pedidos in this period
       (data.clientes || []).forEach(c => { if (!m[c]) m[c] = { n: c, p: [] }; });
-      data.fantasmas.forEach(f => { if (!m[f.cliente]) m[f.cliente] = { n: f.cliente, p: [] }; m[f.cliente].p.push(f); });
+      periodFantasmas.forEach(f => { if (!m[f.cliente]) m[f.cliente] = { n: f.cliente, p: [] }; m[f.cliente].p.push(f); });
       return Object.values(m).map(c => {
         const act = c.p.filter(f => f.estado !== "CERRADO");
         const totalVendido = c.p.reduce((s, f) => s + (f.totalVenta || f.costoMercancia) + (f.costoFlete || 0), 0);
@@ -2406,7 +2511,7 @@ export default function App() {
         const pagos = c.p.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Entrada").map(m => ({ ...m, fId: f.id, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
         return { ...c, act: act.length, totalVendido, totalRecibido, saldo, pendientes, mor, pagos };
       }).sort((a, b) => b.saldo - a.saldo);
-    }, [data]);
+    }, [data, periodoTipo, periodoOffset]);
 
     const openPago = (clientName) => {
       setPagoCliente(clientName);
@@ -2965,20 +3070,22 @@ export default function App() {
 
     const pm = useMemo(() => {
       // Merge registry providers with providers from fantasmas
+      const periodFantasmas = filterByDate(data.fantasmas, "fechaCreacion");
       const allNames = [...new Set([...Object.keys(provInfo), ...data.fantasmas.map(f => f.proveedor).filter(Boolean)])];
       return allNames.map(name => {
         const info = provInfo[name] || {};
-        const pedidos = data.fantasmas.filter(f => f.proveedor === name);
+        const pedidosTodos = data.fantasmas.filter(f => f.proveedor === name);
+        const pedidos = periodFantasmas.filter(f => f.proveedor === name);
         const tc = pedidos.reduce((s, f) => s + f.costoMercancia, 0);
         const tp = pedidos.filter(f => f.proveedorPagado).reduce((s, f) => s + f.costoMercancia, 0) + pedidos.reduce((s, f) => s + (f.abonoProveedor || 0), 0);
         const pendientes = pedidos.filter(f => !f.proveedorPagado);
         const d = pendientes.reduce((s, f) => s + f.costoMercancia - (f.abonoProveedor || 0), 0);
-        const nf = pedidos.filter(f => f.creditoProveedor).length;
+        const nf = pedidosTodos.filter(f => f.creditoProveedor).length;
         const ca = pedidos.filter(f => f.creditoProveedor && !f.proveedorPagado).length;
         const pagos = pedidos.flatMap(f => (f.movimientos || []).filter(m => m.tipo === "Salida" && (m.concepto || "").toLowerCase().includes("proveedor")).map(m => ({ ...m, fId: f.id, desc: f.descripcion }))).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
         return { n: name, p: pedidos, info, tc, tp, d, nf, ca, pendientes, pagos };
       }).sort((a, b) => b.d - a.d);
-    }, [data, provInfo]);
+    }, [data, provInfo, periodoTipo, periodoOffset]);
 
     const filteredPm = (() => {
       let list = pm;
@@ -3071,69 +3178,107 @@ export default function App() {
                   </div>
                 </div>
 
-                {isExp && (
+                {isExp && (() => {
+                  const todos = p.p;
+                  const totalComprado = todos.reduce((s,f) => s + f.costoMercancia, 0);
+                  const pagadoProv   = todos.reduce((s,f) => s + (f.proveedorPagado ? f.costoMercancia : (f.abonoProveedor||0)), 0);
+                  const debeProvT    = Math.max(0, totalComprado - pagadoProv);
+                  const money = (n, color) => <span style={{ fontFamily: "monospace", fontWeight: 700, color, fontSize: 12 }}>{fmt(n)}</span>;
+                  return (
                   <div style={{ borderTop: "1px solid #E5E7EB" }}>
-                    {/* Info & Edit */}
-                    <div style={{ padding: "10px 18px", background: "#F9FAFB", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
+                    {/* Contact info bar */}
+                    <div style={{ padding: "10px 18px", background: "#F9FAFB", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 11, borderBottom: "1px solid #E5E7EB" }}>
                       {p.info.ubicacion && <span>📍 {p.info.ubicacion}</span>}
                       {p.info.contacto && <span>👤 {p.info.contacto}</span>}
-                      {p.info.telefono && <span>📞 {p.info.telefono}</span>}
+                      {p.info.telefono && <a href={`tel:${p.info.telefono}`} onClick={e=>e.stopPropagation()} style={{color:"#2563EB",textDecoration:"none"}}>📞 {p.info.telefono}</a>}
                       {p.nf > 0 && <span style={{ color: "#6B7280" }}>Nos ha fiado {p.nf}x</span>}
                       <Btn sz="sm" v="secondary" onClick={(e) => { e.stopPropagation(); setEditProv(p.n); setProvForm({ nombre: p.n, ubicacion: p.info.ubicacion || "Otay", telefono: p.info.telefono || "", contacto: p.info.contacto || "" }); }}><I.Edit /> Editar</Btn>
                     </div>
-
-                    {p.pendientes.length > 0 && (
-                      <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginBottom: 6 }}>📋 Pendientes de pago ({p.pendientes.length})</div>
-                        {p.pendientes.map(f => {
-                          const debe = f.costoMercancia - (f.abonoProveedor || 0);
-                          return (
-                            <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
-                              <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
-                              <span style={{ color: "#6B7280" }}>{f.cliente}</span>
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
-                              <div style={{ textAlign: "right", minWidth: 80 }}>
-                                <div style={{ fontFamily: "monospace", fontWeight: 600, color: "#7C3AED" }}>{fmt(debe)}</div>
-                                {(f.abonoProveedor || 0) > 0 && <div style={{ fontSize: 9, color: "#059669" }}>Abonado: {fmt(f.abonoProveedor)}</div>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                    {/* Summary bar */}
+                    <div style={{ padding: "14px 18px", background: "#F9FAFB", display: "flex", gap: 8, flexWrap: "wrap", borderBottom: "1px solid #E5E7EB" }}>
+                      <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #E9D5FF" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 6 }}>🏭 Mercancía comprada</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#6B7280" }}>Total</span>{money(totalComprado, "#1A2744")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#059669" }}>✓ Pagado</span>{money(pagadoProv, "#059669")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingTop: 4, borderTop: "1px solid #F3F4F6" }}><span style={{ color: debeProvT > 0 ? "#7C3AED" : "#059669", fontWeight: 700 }}>{debeProvT > 0 ? "⚠ Por pagar" : "✅ Al corriente"}</span>{money(debeProvT, debeProvT > 0 ? "#7C3AED" : "#059669")}</div>
                       </div>
-                    )}
-
-                    <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📦 Todos los pedidos</div>
-                      {p.p.map(f => (
-                        <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
-                          <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
-                          <span style={{ color: "#6B7280" }}>{f.cliente}</span>
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
-                          <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{fmt(f.costoMercancia)}</span>
-                          {f.proveedorPagado ? <span style={{ color: "#059669", fontSize: 10 }}>Pagado ✓</span> : f.creditoProveedor ? <span style={{ color: "#7C3AED", fontSize: 10, fontWeight: 600 }}>Crédito ⚠</span> : <span style={{ color: "#9CA3AF", fontSize: 10 }}>Pendiente</span>}
-                        </div>
-                      ))}
+                      <div style={{ flex: "1 1 120px", background: debeProvT>0?"#F5F3FF":"#ECFDF5", borderRadius: 8, padding: "10px 14px", border: `1px solid ${debeProvT>0?"#E9D5FF":"#A7F3D0"}`, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 4 }}>💜 Deuda total</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: debeProvT>0?"#7C3AED":"#059669" }}>{fmt(debeProvT)}</div>
+                        {debeProvT===0 && <div style={{ fontSize: 10, color: "#059669", marginTop: 2 }}>Al corriente ✅</div>}
+                      </div>
                     </div>
-
+                    {/* Pedido-by-pedido table */}
+                    <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 8 }}>📦 Relación de pedidos</div>
+                      {todos.length === 0 ? <div style={{ textAlign: "center", padding: 16, color: "#9CA3AF", fontSize: 11 }}>Sin pedidos en este período</div> : (
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                          <thead>
+                            <tr style={{ background: "#F3F4F6" }}>
+                              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Folio</th>
+                              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Cliente</th>
+                              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Descripción</th>
+                              <th style={{ padding: "6px 8px", textAlign: "center", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Estado</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#374151", textTransform: "uppercase" }}>Total</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#059669", textTransform: "uppercase" }}>Pagado</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#7C3AED", textTransform: "uppercase" }}>Debe</th>
+                              <th style={{ padding: "6px 8px", textAlign: "center", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Tipo</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {todos.map((f, i) => {
+                              const pag = f.proveedorPagado ? f.costoMercancia : (f.abonoProveedor||0);
+                              const deb = Math.max(0, f.costoMercancia - pag);
+                              return (
+                                <tr key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}
+                                  style={{ background: deb>0?(i%2===0?"#fff":"#FAFBFC"):(i%2===0?"#F0FDF4":"#ECFDF5"), cursor: "pointer", borderBottom: "1px solid #F3F4F6" }}
+                                  onMouseEnter={e => e.currentTarget.style.background="#F5F3FF"}
+                                  onMouseLeave={e => e.currentTarget.style.background=deb>0?(i%2===0?"#fff":"#FAFBFC"):(i%2===0?"#F0FDF4":"#ECFDF5")}>
+                                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 9, color: "#9CA3AF", whiteSpace: "nowrap" }}>{f.id}</td>
+                                  <td style={{ padding: "6px 8px", fontSize: 11, color: "#374151", whiteSpace: "nowrap" }}>{f.cliente}</td>
+                                  <td style={{ padding: "6px 8px", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion||"—"}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "center" }}><Badge estado={f.estado} /></td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#1A2744" }}>{fmt(f.costoMercancia)}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#059669" }}>{pag>0?<>{fmt(pag)}{f.proveedorPagado&&<span style={{fontSize:8,marginLeft:2}}>✓</span>}</>:<span style={{color:"#D1D5DB"}}>—</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{deb>0?<span style={{fontFamily:"monospace",fontWeight:700,color:"#7C3AED"}}>{fmt(deb)}</span>:<span style={{color:"#059669",fontSize:10}}>✓</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "center" }}>{f.creditoProveedor?<span style={{fontSize:9,background:"#F5F3FF",color:"#7C3AED",padding:"2px 6px",borderRadius:4,fontWeight:700}}>Crédito</span>:<span style={{fontSize:9,color:"#9CA3AF"}}>Contado</span>}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr style={{ background: "#F9FAFB", fontWeight: 700 }}>
+                              <td colSpan={4} style={{ padding: "7px 8px", fontSize: 10, color: "#6B7280", textAlign: "right", textTransform: "uppercase" }}>Totales</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#1A2744" }}>{fmt(totalComprado)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#059669" }}>{fmt(pagadoProv)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: debeProvT>0?"#7C3AED":"#059669" }}>{debeProvT>0?fmt(debeProvT):"✓"}</td>
+                              <td />
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      )}
+                    </div>
+                    {/* Payment history */}
                     {p.pagos.length > 0 && (
                       <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginBottom: 6 }}>💵 Historial de pagos</div>
-                        {p.pagos.slice(0, 15).map(m => (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginBottom: 6 }}>💜 Historial de pagos a proveedor</div>
+                        {p.pagos.slice(0, 20).map(m => (
                           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: "1px solid #F9FAFB", fontSize: 11 }}>
-                            <span style={{ color: "#9CA3AF", minWidth: 60 }}>{fmtD(m.fecha)}</span>
+                            <span style={{ color: "#9CA3AF", minWidth: 60, fontSize: 10 }}>{fmtD(m.fecha)}</span>
                             <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{m.fId}</span>
-                            <span style={{ flex: 1, color: "#6B7280" }}>{m.concepto}</span>
-                            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626" }}>-{fmt(m.monto)}</span>
+                            <span style={{ flex: 1, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}</span>
+                            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>-{fmt(m.monto)}</span>
                           </div>
                         ))}
                       </div>
                     )}
-
+                    {/* Actions */}
                     <div style={{ padding: "12px 18px", display: "flex", gap: 8 }}>
                       <Btn v="primary" onClick={(e) => { e.stopPropagation(); setPagoProv(p.n); setPagoProvForm({ fecha: today(), monto: "", nota: "", selected: {} }); }} style={{ flex: 1, justifyContent: "center", background: "#7C3AED" }}>+ Registrar pago a proveedor</Btn>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
