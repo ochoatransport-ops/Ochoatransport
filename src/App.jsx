@@ -2586,73 +2586,117 @@ export default function App() {
                 </div>
 
                 {/* Expanded detail */}
-                {isExp && (
+                {isExp && (() => {
+                  const todos = c.p;
+                  const totalMerc   = todos.reduce((s,f) => s + (f.totalVenta||f.costoMercancia||0), 0);
+                  const pagadoMerc  = todos.reduce((s,f) => s + (f.clientePago ? (f.totalVenta||f.costoMercancia||0) : (f.abonoMercancia||0)), 0);
+                  const debeMercT   = Math.max(0, totalMerc - pagadoMerc);
+                  const totalFlete  = todos.reduce((s,f) => s + (f.costoFlete||0), 0);
+                  const pagadoFlete = todos.reduce((s,f) => s + (f.fletePagado ? (f.costoFlete||0) : (f.abonoFlete||0)), 0);
+                  const debeFleteT  = Math.max(0, totalFlete - pagadoFlete);
+                  const money = (n, color) => <span style={{ fontFamily: "monospace", fontWeight: 700, color, fontSize: 12 }}>{fmt(n)}</span>;
+                  return (
                   <div style={{ borderTop: "1px solid #E5E7EB" }}>
-                    {/* Pedidos pendientes */}
-                    {c.pendientes.length > 0 && (
-                      <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", marginBottom: 6 }}>📋 Pedidos pendientes de pago ({c.pendientes.length})</div>
-                        {c.pendientes.map(f => {
-                          const debeMerc = (f.totalVenta || f.costoMercancia) - (f.clientePago ? (f.totalVenta || f.costoMercancia) : (f.abonoMercancia || 0));
-                          const debeFlete = (f.costoFlete || 0) - (f.fletePagado ? (f.costoFlete || 0) : (f.abonoFlete || 0));
-                          return (
-                            <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
-                              <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
-                              <Badge estado={f.estado} />
-                              <div style={{ textAlign: "right", minWidth: 100 }}>
-                                {debeMerc > 0 && <div style={{ fontSize: 10 }}><span style={{ color: "#9CA3AF" }}>👻</span> <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#DC2626" }}>{fmt(debeMerc)}</span></div>}
-                                {debeFlete > 0 && <div style={{ fontSize: 10 }}><span style={{ color: "#9CA3AF" }}>🚛</span> <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#DC2626" }}>{fmt(debeFlete)}</span></div>}
-                                {(f.abonoMercancia || 0) > 0 && !f.clientePago && <div style={{ fontSize: 9, color: "#059669" }}>Abonó merc: {fmt(f.abonoMercancia)}</div>}
-                                {(f.abonoFlete || 0) > 0 && !f.fletePagado && <div style={{ fontSize: 9, color: "#059669" }}>Abonó flete: {fmt(f.abonoFlete)}</div>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                    {/* Summary bar */}
+                    <div style={{ padding: "14px 18px", background: "#F9FAFB", display: "flex", gap: 8, flexWrap: "wrap", borderBottom: "1px solid #E5E7EB" }}>
+                      <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #FECACA" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 6 }}>👻 Fantasmas</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#6B7280" }}>Total</span>{money(totalMerc, "#1A2744")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#059669" }}>✓ Pagado</span>{money(pagadoMerc, "#059669")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingTop: 4, borderTop: "1px solid #F3F4F6" }}><span style={{ color: debeMercT > 0 ? "#DC2626" : "#059669", fontWeight: 700 }}>{debeMercT > 0 ? "⚠ Por cobrar" : "✅ Al corriente"}</span>{money(debeMercT, debeMercT > 0 ? "#DC2626" : "#059669")}</div>
                       </div>
-                    )}
-
-                    {/* All orders */}
-                    <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6 }}>📦 Todos los pedidos</div>
-                      {c.p.map(f => (
-                        <div key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #F9FAFB", cursor: "pointer", fontSize: 11 }}>
-                          <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{f.id}</span>
-                          <span style={{ color: "#9CA3AF", minWidth: 44 }}>{fmtD(f.fechaCreacion)}</span>
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion}</span>
-                          <Badge estado={f.estado} />
-                          <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#1A2744" }}>{fmt((f.totalVenta || f.costoMercancia) + (f.costoFlete || 0))}</span>
-                          {f.clientePago ? <span style={{ color: "#059669", fontSize: 10 }}>Pagado ✓</span> : <span style={{ color: "#DC2626", fontSize: 10 }}>Pendiente</span>}
-                        </div>
-                      ))}
+                      <div style={{ flex: "1 1 140px", background: "#fff", borderRadius: 8, padding: "10px 14px", border: "1px solid #BFDBFE" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 6 }}>🚛 Fletes</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#6B7280" }}>Total</span>{money(totalFlete, "#1A2744")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}><span style={{ color: "#059669" }}>✓ Pagado</span>{money(pagadoFlete, "#059669")}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingTop: 4, borderTop: "1px solid #F3F4F6" }}><span style={{ color: debeFleteT > 0 ? "#DC2626" : "#059669", fontWeight: 700 }}>{debeFleteT > 0 ? "⚠ Por cobrar" : "✅ Al corriente"}</span>{money(debeFleteT, debeFleteT > 0 ? "#DC2626" : "#059669")}</div>
+                      </div>
+                      <div style={{ flex: "1 1 120px", background: (debeMercT+debeFleteT)>0?"#FEF2F2":"#ECFDF5", borderRadius: 8, padding: "10px 14px", border: `1px solid ${(debeMercT+debeFleteT)>0?"#FECACA":"#A7F3D0"}`, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 4 }}>💰 Deuda total</div>
+                        <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: (debeMercT+debeFleteT)>0?"#DC2626":"#059669" }}>{fmt(debeMercT+debeFleteT)}</div>
+                        {debeMercT+debeFleteT===0 && <div style={{ fontSize: 10, color: "#059669", marginTop: 2 }}>Al corriente ✅</div>}
+                      </div>
                     </div>
-
+                    {/* Pedido-by-pedido table */}
+                    <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 8 }}>📦 Relación de pedidos</div>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                          <thead>
+                            <tr style={{ background: "#F3F4F6" }}>
+                              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Folio</th>
+                              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Descripción</th>
+                              <th style={{ padding: "6px 8px", textAlign: "center", fontSize: 9, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>Estado</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#374151", textTransform: "uppercase" }}>👻 Total</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#059669", textTransform: "uppercase" }}>👻 Pagó</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#DC2626", textTransform: "uppercase" }}>👻 Debe</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#374151", textTransform: "uppercase" }}>🚛 Total</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#059669", textTransform: "uppercase" }}>🚛 Pagó</th>
+                              <th style={{ padding: "6px 8px", textAlign: "right", fontSize: 9, fontWeight: 700, color: "#2563EB", textTransform: "uppercase" }}>🚛 Debe</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {todos.map((f, i) => {
+                              const totM  = f.totalVenta||f.costoMercancia||0;
+                              const pagM  = f.clientePago ? totM : (f.abonoMercancia||0);
+                              const debM  = Math.max(0, totM-pagM);
+                              const totFl = f.costoFlete||0;
+                              const pagFl = f.fletePagado ? totFl : (f.abonoFlete||0);
+                              const debFl = Math.max(0, totFl-pagFl);
+                              const rowDeuda = debM+debFl;
+                              return (
+                                <tr key={f.id} onClick={() => { setDetailMode("full"); navigate("detail", f.id, view); }}
+                                  style={{ background: rowDeuda>0?(i%2===0?"#fff":"#FAFBFC"):(i%2===0?"#F0FDF4":"#ECFDF5"), cursor: "pointer", borderBottom: "1px solid #F3F4F6" }}
+                                  onMouseEnter={e => e.currentTarget.style.background="#EFF6FF"}
+                                  onMouseLeave={e => e.currentTarget.style.background=rowDeuda>0?(i%2===0?"#fff":"#FAFBFC"):(i%2===0?"#F0FDF4":"#ECFDF5")}>
+                                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 9, color: "#9CA3AF", whiteSpace: "nowrap" }}>{f.id}</td>
+                                  <td style={{ padding: "6px 8px", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.descripcion||"—"}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "center" }}><Badge estado={f.estado} /></td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#1A2744" }}>{fmt(totM)}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#059669" }}>{pagM>0?<>{fmt(pagM)}{f.clientePago&&<span style={{fontSize:8,marginLeft:2}}>✓</span>}</>:<span style={{color:"#D1D5DB"}}>—</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{debM>0?<span style={{fontFamily:"monospace",fontWeight:700,color:"#DC2626"}}>{fmt(debM)}</span>:<span style={{color:"#059669",fontSize:10}}>✓</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#1A2744" }}>{totFl>0?fmt(totFl):<span style={{color:"#D1D5DB"}}>—</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", color: "#059669" }}>{pagFl>0?<>{fmt(pagFl)}{f.fletePagado&&totFl>0&&<span style={{fontSize:8,marginLeft:2}}>✓</span>}</>:<span style={{color:"#D1D5DB"}}>—</span>}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{debFl>0?<span style={{fontFamily:"monospace",fontWeight:700,color:"#2563EB"}}>{fmt(debFl)}</span>:totFl>0?<span style={{color:"#059669",fontSize:10}}>✓</span>:<span style={{color:"#D1D5DB"}}>—</span>}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr style={{ background: "#F9FAFB", fontWeight: 700 }}>
+                              <td colSpan={3} style={{ padding: "7px 8px", fontSize: 10, color: "#6B7280", textAlign: "right", textTransform: "uppercase" }}>Totales</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#1A2744" }}>{fmt(totalMerc)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#059669" }}>{fmt(pagadoMerc)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: debeMercT>0?"#DC2626":"#059669" }}>{debeMercT>0?fmt(debeMercT):"✓"}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#1A2744" }}>{totalFlete>0?fmt(totalFlete):"—"}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: "#059669" }}>{pagadoFlete>0?fmt(pagadoFlete):"—"}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 12, color: debeFleteT>0?"#2563EB":"#059669" }}>{debeFleteT>0?fmt(debeFleteT):totalFlete>0?"✓":"—"}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                     {/* Payment history */}
                     {c.pagos.length > 0 && (
-                      <div style={{ padding: "12px 18px" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginBottom: 6 }}>💵 Historial de pagos/abonos</div>
-                        {c.pagos.slice(0, 15).map(m => (
+                      <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginBottom: 6 }}>💵 Historial de pagos</div>
+                        {c.pagos.slice(0, 20).map(m => (
                           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: "1px solid #F9FAFB", fontSize: 11 }}>
-                            <span style={{ color: "#9CA3AF", minWidth: 60 }}>{fmtD(m.fecha)}</span>
+                            <span style={{ color: "#9CA3AF", minWidth: 60, fontSize: 10 }}>{fmtD(m.fecha)}</span>
                             <span style={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: 9 }}>{m.fId}</span>
-                            <span style={{ flex: 1, color: "#6B7280" }}>{m.desc}</span>
-                            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#059669" }}>+{fmt(m.monto)}</span>
+                            <span style={{ flex: 1, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.desc}</span>
+                            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#059669", whiteSpace: "nowrap" }}>+{fmt(m.monto)}</span>
                           </div>
                         ))}
                       </div>
                     )}
-                    {c.pagos.length === 0 && c.pendientes.length > 0 && (
-                      <div style={{ padding: "12px 18px", textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>Sin pagos registrados aún</div>
-                    )}
-
-                    {/* Registrar pago button + edit/delete */}
+                    {/* Actions */}
                     <div style={{ padding: "12px 18px", display: "flex", gap: 8 }}>
                       <Btn v="primary" onClick={(e) => { e.stopPropagation(); openPago(c.n); }} style={{ flex: 1, justifyContent: "center" }}>+ Registrar pago</Btn>
                       <Btn v="secondary" sz="sm" onClick={(e) => { e.stopPropagation(); const info = (data.clientesInfo || {})[c.n] || {}; setEditClienteInfo({ nombre: c.n, nombreOriginal: c.n, telefono: info.telefono || "", direccion: info.direccion || "", notas: info.notas || "" }); }} title="Editar contacto y nombre">✏️ Editar</Btn>
                       <Btn v="danger" sz="sm" onClick={async (e) => { e.stopPropagation(); if (c.p.length > 0) { await showAlert("No se puede eliminar un cliente con pedidos."); } else deleteCliente(c.n); }}><I.Trash /></Btn>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
