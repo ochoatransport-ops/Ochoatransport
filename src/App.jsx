@@ -63,6 +63,7 @@ async function loadAll() {
       proveedoresList:     meta.proveedoresList      ?? [],
       provUbicaciones:     meta.provUbicaciones      ?? {},
       proveedoresInfo:     meta.proveedoresInfo      ?? {},
+      clientesInfo:        meta.clientesInfo         ?? {},
       gastosAdmin:         finanzas.gastosAdmin      ?? [],
       gastosUSA:           finanzas.gastosUSA        ?? [],
       gastosBodega:        finanzas.gastosBodega     ?? [],
@@ -115,7 +116,8 @@ async function saveAll(nd, prev) {
       JSON.stringify(nd.clientes) !== JSON.stringify(prev.clientes) ||
       JSON.stringify(nd.proveedoresList) !== JSON.stringify(prev.proveedoresList) ||
       JSON.stringify(nd.provUbicaciones) !== JSON.stringify(prev.provUbicaciones) ||
-      JSON.stringify(nd.proveedoresInfo) !== JSON.stringify(prev.proveedoresInfo);
+      JSON.stringify(nd.proveedoresInfo) !== JSON.stringify(prev.proveedoresInfo) ||
+      JSON.stringify(nd.clientesInfo) !== JSON.stringify(prev.clientesInfo);
     if (metaChanged) {
       batch.set(configDoc("meta"), {
         nextId: nd.nextId,
@@ -125,6 +127,7 @@ async function saveAll(nd, prev) {
         proveedoresList: nd.proveedoresList ?? [],
         provUbicaciones: nd.provUbicaciones ?? {},
         proveedoresInfo: nd.proveedoresInfo ?? {},
+        clientesInfo:    nd.clientesInfo    ?? {},
       });
     }
 
@@ -222,7 +225,7 @@ function diasHabiles(fechaStr) {
   }
   return count;
 }
-const init = () => ({ fantasmas: [], nextId: 2800, colchon: { montoOriginal: 0, saldoActual: 0, movimientos: [] }, vendedores: [], clientes: [], proveedoresList: [], provUbicaciones: {}, proveedoresInfo: {}, gastosAdmin: [], gastosUSA: [], gastosBodega: [], transferencias: [], adelantosAdmin: [], cuentasPorPagar: [], cuentasPorCobrarEmp: [], fondos: {}, fondosCustom: [], fondosMovs: [], envios: [], bitacoraGanancias: [] });
+const init = () => ({ fantasmas: [], nextId: 2800, colchon: { montoOriginal: 0, saldoActual: 0, movimientos: [] }, vendedores: [], clientes: [], proveedoresList: [], provUbicaciones: {}, proveedoresInfo: {}, clientesInfo: {}, gastosAdmin: [], gastosUSA: [], gastosBodega: [], transferencias: [], adelantosAdmin: [], cuentasPorPagar: [], cuentasPorCobrarEmp: [], fondos: {}, fondosCustom: [], fondosMovs: [], envios: [], bitacoraGanancias: [] });
 
 
 const I = {
@@ -1037,7 +1040,7 @@ export default function App() {
 
     // Real-time listener — syncs fantasmas changes from other users instantly
     const unsubFantasmas = onSnapshot(collection(db, "fantasmas"), (snap) => {
-      if (formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (_savingRef.current || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const remoteFantasmas = snap.docs.map(d => d.data());
       setData(prev => {
         if (!prev) return prev;
@@ -1054,7 +1057,7 @@ export default function App() {
     }, (err) => console.error("Realtime listener error:", err));
 
     const unsubMeta = onSnapshot(configDoc("meta"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || _savingRef.current || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const meta = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -1065,6 +1068,7 @@ export default function App() {
           proveedoresList: meta.proveedoresList ?? prev.proveedoresList,
           provUbicaciones: meta.provUbicaciones ?? prev.provUbicaciones,
           proveedoresInfo: meta.proveedoresInfo ?? prev.proveedoresInfo,
+          clientesInfo:    meta.clientesInfo    ?? prev.clientesInfo,
         };
         prevDataRef.current = updated;
         return updated;
@@ -1072,7 +1076,7 @@ export default function App() {
     });
 
     const unsubFinanzas = onSnapshot(configDoc("finanzas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || _savingRef.current || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const fin = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -1093,7 +1097,7 @@ export default function App() {
     });
 
     const unsubColchon = onSnapshot(configDoc("colchon"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || _savingRef.current || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       setData(prev => {
         if (!prev) return prev;
         const updated = { ...prev, colchon: snap.data().data ?? prev.colchon };
@@ -1103,7 +1107,7 @@ export default function App() {
     });
 
     const unsubCuentas = onSnapshot(configDoc("cuentas"), (snap) => {
-      if (!snap.exists() || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
+      if (!snap.exists() || _savingRef.current || formOpenRef.current || inputFocusedRef.current || Date.now() - lastActivityRef.current < 2000) return;
       const c = snap.data();
       setData(prev => {
         if (!prev) return prev;
@@ -1127,11 +1131,14 @@ export default function App() {
   }, []);
 
   const [saveStatus, setSaveStatus] = useState("ok");
+  const _savingRef = useRef(false); // blocks snapshots while a save is in-flight
   const persist = useCallback(nd => {
     setData(nd);
+    prevDataRef.current = nd;   // ← update immediately so onSnapshot can't revert us
+    _savingRef.current = true;  // ← block snapshot overwrites while saving
     setSaveStatus("saving");
     saveAll(nd, prevDataRef.current).then(result => {
-      prevDataRef.current = nd;
+      _savingRef.current = false;
       if (result === true) setSaveStatus("ok");
       else if (result === "local") setSaveStatus("local");
       else setSaveStatus("error");
@@ -2338,25 +2345,29 @@ export default function App() {
     const [showNewCliente, setShowNewCliente] = useModalState("showNewCliente");
     const [showNewVendedor, setShowNewVendedor] = useModalState("showNewVendedor");
     const [newName, setNewName] = useState("");
+    const [newClienteForm, setNewClienteForm] = useState({ nombre: "", telefono: "", direccion: "", notas: "" });
+    const [editClienteInfo, setEditClienteInfo] = useState(null); // cliente name being edited
 
-    const addCliente = async (name) => {
-      if (!name) return;
-      const n = name.toUpperCase();
+    const addCliente = async (form) => {
+      const n = (form.nombre || "").trim().toUpperCase();
+      if (!n) return;
       const existing = data.clientes || [];
-      // Exact match — block
       if (existing.includes(n)) { showAlert("⚠️ El cliente \"" + n + "\" ya existe."); return; }
-      // Similar match — warn
       const similar = existing.filter(c => {
         if (c.includes(n) || n.includes(c)) return true;
-        // Check word overlap
         const words = n.split(" ").filter(w => w.length > 2);
         return words.some(w => c.includes(w));
       });
       if (similar.length > 0) {
         if (!await showConfirm(`⚠️ Ya existen clientes con nombre similar:\n\n${similar.join("\n")}\n\n¿Seguro que quieres agregar "${n}"?`)) return;
       }
-      persist({ ...data, clientes: [...existing, n] });
-      setShowNewCliente(false); setNewName("");
+      const newInfo = { ...(data.clientesInfo || {}) };
+      if (form.telefono || form.direccion || form.notas) {
+        newInfo[n] = { telefono: form.telefono || "", direccion: form.direccion || "", notas: form.notas || "" };
+      }
+      persist({ ...data, clientes: [...existing, n], clientesInfo: newInfo });
+      setShowNewCliente(false);
+      setNewClienteForm({ nombre: "", telefono: "", direccion: "", notas: "" });
     };
     const addVendedor = async (name) => {
       if (!name) return;
@@ -2544,6 +2555,16 @@ export default function App() {
                         {c.mor && <span style={{ fontSize: 9, background: "#FEE2E2", color: "#991B1B", padding: "2px 7px", borderRadius: 4, fontWeight: 700 }}>⚠ MOROSO</span>}
                       </div>
                       <div style={{ fontSize: 11, color: "#9CA3AF" }}>{c.p.length} pedidos ({c.act} activos)</div>
+                      {(() => {
+                        const info = (data.clientesInfo || {})[c.n] || {};
+                        return (
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                            {info.telefono && <a href={`tel:${info.telefono}`} onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#2563EB", textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>📞 {info.telefono}</a>}
+                            {info.direccion && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.direccion)}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: "#059669", textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>📍 {info.direccion}</a>}
+                            {info.notas && <span style={{ fontSize: 10, color: "#6B7280" }}>💬 {info.notas}</span>}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 10, color: "#6B7280" }}>Saldo</div>
@@ -2627,7 +2648,7 @@ export default function App() {
                     {/* Registrar pago button + edit/delete */}
                     <div style={{ padding: "12px 18px", display: "flex", gap: 8 }}>
                       <Btn v="primary" onClick={(e) => { e.stopPropagation(); openPago(c.n); }} style={{ flex: 1, justifyContent: "center" }}>+ Registrar pago</Btn>
-                      <Btn v="secondary" sz="sm" onClick={(e) => { e.stopPropagation(); const nn = c.n; if (nn && nn.trim()) { const upper = nn.trim().toUpperCase(); const newClientes = (data.clientes || []).map(x => x === c.n ? upper : x); const newFantasmas = data.fantasmas.map(f => f.cliente === c.n ? { ...f, cliente: upper } : f); persist({ ...data, clientes: newClientes, fantasmas: newFantasmas }); } }}><I.Edit /></Btn>
+                      <Btn v="secondary" sz="sm" onClick={(e) => { e.stopPropagation(); const info = (data.clientesInfo || {})[c.n] || {}; setEditClienteInfo({ nombre: c.n, nombreOriginal: c.n, telefono: info.telefono || "", direccion: info.direccion || "", notas: info.notas || "" }); }} title="Editar contacto y nombre">✏️ Editar</Btn>
                       <Btn v="danger" sz="sm" onClick={async (e) => { e.stopPropagation(); if (c.p.length > 0) { await showAlert("No se puede eliminar un cliente con pedidos."); } else deleteCliente(c.n); }}><I.Trash /></Btn>
                     </div>
                   </div>
@@ -2640,11 +2661,74 @@ export default function App() {
 
         {/* NEW CLIENTE MODAL */}
         {showNewCliente && (
-          <Modal title="Nuevo Cliente" onClose={() => { setShowNewCliente(false) }} w={360}>
-            <Fld label="Nombre del cliente"><Inp value={newName} onChange={e => setNewName(e.target.value.toUpperCase())} placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} /></Fld>
+          <Modal title="Nuevo Cliente" onClose={() => { setShowNewCliente(false); setNewClienteForm({ nombre: "", telefono: "", direccion: "", notas: "" }); }} w={420}>
+            <Fld label="Nombre del cliente *">
+              <Inp value={newClienteForm.nombre} onChange={e => setNewClienteForm({ ...newClienteForm, nombre: e.target.value.toUpperCase() })} placeholder="NOMBRE COMPLETO" style={{ textTransform: "uppercase" }} />
+            </Fld>
+            <div style={{ height: 1, background: "#F3F4F6", margin: "8px 0" }} />
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 }}>Información de contacto (opcional)</div>
+            <Fld label="Teléfono">
+              <Inp value={newClienteForm.telefono} onChange={e => setNewClienteForm({ ...newClienteForm, telefono: e.target.value })} placeholder="664-123-4567" />
+            </Fld>
+            <Fld label="Dirección">
+              <Inp value={newClienteForm.direccion} onChange={e => setNewClienteForm({ ...newClienteForm, direccion: e.target.value })} placeholder="Calle, colonia, ciudad..." />
+            </Fld>
+            {newClienteForm.direccion && (
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(newClienteForm.direccion)}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#059669", marginBottom: 8, textDecoration: "none" }}>
+                📍 Previsualizar en Google Maps
+              </a>
+            )}
+            <Fld label="Notas">
+              <Inp value={newClienteForm.notas} onChange={e => setNewClienteForm({ ...newClienteForm, notas: e.target.value })} placeholder="Referencias, horario, etc." />
+            </Fld>
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <Btn v="secondary" onClick={() => { setShowNewCliente(false) }}>Cancelar</Btn>
-              <Btn disabled={!newName} onClick={() => addCliente(newName)}>Crear</Btn>
+              <Btn v="secondary" onClick={() => { setShowNewCliente(false); setNewClienteForm({ nombre: "", telefono: "", direccion: "", notas: "" }); }}>Cancelar</Btn>
+              <Btn disabled={!newClienteForm.nombre.trim()} onClick={() => addCliente(newClienteForm)}>Crear</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {/* EDIT CLIENTE INFO MODAL */}
+        {editClienteInfo && (
+          <Modal title={`✏️ Editar cliente — ${editClienteInfo.nombreOriginal}`} onClose={() => setEditClienteInfo(null)} w={420}>
+            <Fld label="Nombre del cliente">
+              <Inp value={editClienteInfo.nombre} onChange={e => setEditClienteInfo({ ...editClienteInfo, nombre: e.target.value.toUpperCase() })} style={{ textTransform: "uppercase" }} />
+            </Fld>
+            <div style={{ height: 1, background: "#F3F4F6", margin: "8px 0" }} />
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: .5, marginBottom: 8 }}>Información de contacto</div>
+            <Fld label="Teléfono">
+              <Inp value={editClienteInfo.telefono} onChange={e => setEditClienteInfo({ ...editClienteInfo, telefono: e.target.value })} placeholder="664-123-4567" />
+            </Fld>
+            <Fld label="Dirección">
+              <Inp value={editClienteInfo.direccion} onChange={e => setEditClienteInfo({ ...editClienteInfo, direccion: e.target.value })} placeholder="Calle, colonia, ciudad..." />
+            </Fld>
+            {editClienteInfo.direccion && (
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editClienteInfo.direccion)}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#fff", background: "#059669", padding: "6px 12px", borderRadius: 6, marginBottom: 10, textDecoration: "none" }}>
+                🗺️ Abrir en Google Maps
+              </a>
+            )}
+            <Fld label="Notas">
+              <Inp value={editClienteInfo.notas} onChange={e => setEditClienteInfo({ ...editClienteInfo, notas: e.target.value })} placeholder="Referencias, horario, colonia..." />
+            </Fld>
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <Btn v="secondary" onClick={() => setEditClienteInfo(null)}>Cancelar</Btn>
+              <Btn disabled={!editClienteInfo.nombre.trim()} onClick={() => {
+                const oldName = editClienteInfo.nombreOriginal;
+                const newName = editClienteInfo.nombre.trim().toUpperCase();
+                let nd = { ...data };
+                // Update clientesInfo
+                const newInfo = { ...(nd.clientesInfo || {}) };
+                delete newInfo[oldName];
+                newInfo[newName] = { telefono: editClienteInfo.telefono, direccion: editClienteInfo.direccion, notas: editClienteInfo.notas };
+                nd.clientesInfo = newInfo;
+                // Rename in clientes list if name changed
+                if (newName !== oldName) {
+                  nd.clientes = (nd.clientes || []).map(c => c === oldName ? newName : c);
+                  nd.fantasmas = nd.fantasmas.map(f => f.cliente === oldName ? { ...f, cliente: newName } : f);
+                }
+                persist(nd);
+                setEditClienteInfo(null);
+              }}>💾 Guardar</Btn>
             </div>
           </Modal>
         )}
@@ -3848,6 +3932,11 @@ export default function App() {
     };
 
     const PendientesTab = () => {
+      const provInfo = data.proveedoresInfo || {};
+      const isOtayP = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("otay"); };
+      const isLAP   = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("ángeles") || u.includes("angeles"); };
+      const getZonaP = (f) => isOtayP(f) ? "Otay" : isLAP(f) ? "Los Ángeles" : f.ubicacionProv || "Sin ubicación";
+
       const renderItem = (f) => {
         const dias = diasHabiles(f.fechaCreacion);
         const autoUrgente = dias >= 3;
@@ -3877,6 +3966,63 @@ export default function App() {
         );
       };
 
+      // Render a zona block with proveedor sub-groups
+      const renderZonaP = (label, items, color, bg, emoji, selObj, setSelObj) => {
+        if (items.length === 0) return null;
+        const byProv = {};
+        items.forEach(f => { const p = f.proveedor || "SIN PROVEEDOR"; if (!byProv[p]) byProv[p] = []; byProv[p].push(f); });
+        const provNames = Object.keys(byProv).sort();
+        const allSel = items.every(f => selObj[f.id]);
+        const total = items.reduce((s, f) => s + f.costoMercancia, 0);
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "8px 12px", background: bg, borderRadius: 8, border: `1px solid ${color}33` }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flex: 1 }}>
+                <input type="checkbox" checked={allSel} onChange={e => { const ns = { ...selObj }; items.forEach(f => ns[f.id] = e.target.checked); setSelObj(ns); }} style={{ width: 16, height: 16, accentColor: color }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color }}>{emoji} {label}</span>
+                <span style={{ fontSize: 10, color: "#9CA3AF" }}>({items.length} pedido{items.length !== 1 ? "s" : ""} · {fmt(total)})</span>
+              </label>
+            </div>
+            {provNames.map(pName => {
+              const pItems = byProv[pName];
+              const pInfo = provInfo[pName] || {};
+              const pAllSel = pItems.every(f => selObj[f.id]);
+              return (
+                <div key={pName} style={{ marginLeft: 16, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, padding: "4px 8px" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
+                      <input type="checkbox" checked={pAllSel} onChange={e => { const ns = { ...selObj }; pItems.forEach(f => ns[f.id] = e.target.checked); setSelObj(ns); }} style={{ width: 14, height: 14, accentColor: color }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>🏭 {pName}</span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>({pItems.length})</span>
+                      {pInfo.contacto && <span style={{ fontSize: 10, color: "#9CA3AF" }}>· 👤 {pInfo.contacto}</span>}
+                      {pInfo.telefono && <span style={{ fontSize: 10, color: "#9CA3AF" }}>· 📞 {pInfo.telefono}</span>}
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", marginLeft: 8 }}>
+                    {pItems.map(renderItem)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      };
+
+      const renderGrouped = (items, selObj, setSelObj) => {
+        const otayItems  = items.filter(f => isOtayP(f));
+        const laItems    = items.filter(f => isLAP(f));
+        const otraItems  = items.filter(f => !isOtayP(f) && !isLAP(f) && f.ubicacionProv);
+        const sinUbItems = items.filter(f => !isOtayP(f) && !isLAP(f) && !f.ubicacionProv);
+        return (
+          <>
+            {renderZonaP("Otay", otayItems, "#1E40AF", "#EFF6FF", "📍", selObj, setSelObj)}
+            {renderZonaP("Los Ángeles", laItems, "#7C3AED", "#F5F3FF", "📍", selObj, setSelObj)}
+            {otraItems.length  > 0 && renderZonaP("Otra ubicación", otraItems, "#6B7280", "#F9FAFB", "📍", selObj, setSelObj)}
+            {sinUbItems.length > 0 && renderZonaP("Sin ubicación", sinUbItems, "#9CA3AF", "#F9FAFB", "❓", selObj, setSelObj)}
+          </>
+        );
+      };
+
       return (
       <div>
         {/* Sub-tabs: Pendientes / Sobres en camino */}
@@ -3896,11 +4042,11 @@ export default function App() {
               <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>✅</div><p style={{ fontSize: 12 }}>No hay pedidos esperando sobre.</p></div>
             ) : (
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div style={{ fontSize: 10, color: "#9CA3AF", padding: "4px 8px", background: "#FEF3C7", borderRadius: 4, flex: 1, marginRight: 8 }}>⚠️ México no ha marcado el sobre como enviado. Solo puedes usar colchón.</div>
                   <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sinSobreUSA.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
                 </div>
-                {sinSobreUSA.filter(usaMatch).map(renderItem)}
+                {renderGrouped(sinSobreUSA.filter(usaMatch), selSobres, setSelSobres)}
               </div>
             )}
           </div>
@@ -3913,10 +4059,10 @@ export default function App() {
               <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📭</div><p style={{ fontSize: 12 }}>No hay sobres en camino.</p></div>
             ) : (
               <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
                   <Btn sz="sm" v="secondary" onClick={() => { const ns = { ...selSobres }; sobreEnCamino.forEach(f => ns[f.id] = true); setSelSobres(ns); }}>Seleccionar todos</Btn>
                 </div>
-                {sobreEnCamino.filter(usaMatch).map(renderItem)}
+                {renderGrouped(sobreEnCamino.filter(usaMatch), selSobres, setSelSobres)}
               </div>
             )}
           </div>
@@ -4302,6 +4448,9 @@ export default function App() {
       const [selPeds, setSelPeds] = useState({});
       const [choferSel, setChoferSel] = useState("");
       const selCount = Object.keys(selPeds).filter(k => selPeds[k]).length;
+      const provInfo = data.proveedoresInfo || {};
+      const isOtayC = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("otay"); };
+      const isLAC   = (f) => { const u = (f.ubicacionProv || provInfo[f.proveedor]?.ubicacion || "").toLowerCase(); return u.includes("ángeles") || u.includes("angeles"); };
 
       const asignar = () => {
         if (!choferSel || selCount === 0) return;
@@ -4329,6 +4478,76 @@ export default function App() {
         persist(nd); setSelPeds({});
       };
 
+      const renderItemC = (f) => {
+        const sel = !!selPeds[f.id];
+        const dias = diasHabiles(f.fechaCreacion);
+        return (
+          <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: sel ? "#EFF6FF" : f.urgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: sel ? "2px solid #2563EB" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", cursor: "pointer", marginBottom: 4 }}>
+            <input type="checkbox" checked={sel} onChange={e => setSelPeds({ ...selPeds, [f.id]: e.target.checked })} style={{ width: 18, height: 18, accentColor: "#2563EB", flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
+                <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
+                {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
+                <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
+                <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
+                <span style={{ fontSize: 9, background: dias >= 3 ? "#FEE2E2" : dias >= 2 ? "#FEF3C7" : "#F3F4F6", color: dias >= 3 ? "#DC2626" : dias >= 2 ? "#D97706" : "#6B7280", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🕐 {dias}d</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}{f.proveedor ? ` · ${f.proveedor}` : ""}</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>{fmt(f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia)}</div>
+              {f.costoFlete > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Flete: {fmt(f.costoFlete)}</div>}
+            </div>
+          </label>
+        );
+      };
+
+      const renderZonaC = (label, items, color, bg, emoji) => {
+        if (items.length === 0) return null;
+        const byProv = {};
+        items.forEach(f => { const p = f.proveedor || "SIN PROVEEDOR"; if (!byProv[p]) byProv[p] = []; byProv[p].push(f); });
+        const provNames = Object.keys(byProv).sort();
+        const allSel = items.every(f => selPeds[f.id]);
+        const total = items.reduce((s, f) => s + (f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia), 0);
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "8px 12px", background: bg, borderRadius: 8, border: `1px solid ${color}33` }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flex: 1 }}>
+                <input type="checkbox" checked={allSel} onChange={e => { const ns = { ...selPeds }; items.forEach(f => ns[f.id] = e.target.checked); setSelPeds(ns); }} style={{ width: 16, height: 16, accentColor: color }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color }}>{emoji} {label}</span>
+                <span style={{ fontSize: 10, color: "#9CA3AF" }}>({items.length} pedido{items.length !== 1 ? "s" : ""} · {fmt(total)})</span>
+              </label>
+            </div>
+            {provNames.map(pName => {
+              const pItems = byProv[pName];
+              const pInfo = provInfo[pName] || {};
+              const pAllSel = pItems.every(f => selPeds[f.id]);
+              return (
+                <div key={pName} style={{ marginLeft: 16, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, padding: "4px 8px" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
+                      <input type="checkbox" checked={pAllSel} onChange={e => { const ns = { ...selPeds }; pItems.forEach(f => ns[f.id] = e.target.checked); setSelPeds(ns); }} style={{ width: 14, height: 14, accentColor: color }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>🏭 {pName}</span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>({pItems.length})</span>
+                      {pInfo.contacto && <span style={{ fontSize: 10, color: "#9CA3AF" }}>· 👤 {pInfo.contacto}</span>}
+                      {pInfo.telefono && <span style={{ fontSize: 10, color: "#9CA3AF" }}>· 📞 {pInfo.telefono}</span>}
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", marginLeft: 8 }}>
+                    {pItems.map(renderItemC)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      };
+
+      const otayC  = listoParaChofer.filter(f => isOtayC(f));
+      const laC    = listoParaChofer.filter(f => isLAC(f));
+      const otraC  = listoParaChofer.filter(f => !isOtayC(f) && !isLAC(f) && f.ubicacionProv);
+      const sinUbC = listoParaChofer.filter(f => !isOtayC(f) && !isLAC(f) && !f.ubicacionProv);
+
       return (
         <div>
           <div style={{ marginBottom: 14 }}>
@@ -4343,30 +4562,11 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 80 }}>
-                {listoParaChofer.map(f => {
-                  const sel = !!selPeds[f.id];
-                  const dias = diasHabiles(f.fechaCreacion);
-                  return (
-                    <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: sel ? "#EFF6FF" : f.urgente ? "#FFF5F5" : "#fff", borderRadius: 8, border: sel ? "2px solid #2563EB" : f.urgente ? "2px solid #FECACA" : "1px solid #E5E7EB", cursor: "pointer" }}>
-                      <input type="checkbox" checked={sel} onChange={e => setSelPeds({ ...selPeds, [f.id]: e.target.checked })} style={{ width: 18, height: 18, accentColor: "#2563EB", flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginBottom: 2 }}>
-                          <span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace" }}>{f.id}</span>
-                          {f.urgente && <span style={{ fontSize: 9, background: "#DC2626", color: "#fff", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🔥 URGENTE</span>}
-                          <strong style={{ fontSize: 12 }}>{f.cliente}</strong>
-                          <DBadge status={f.dineroStatus || "SIN_FONDOS"} />
-                          <span style={{ fontSize: 9, background: dias >= 3 ? "#FEE2E2" : dias >= 2 ? "#FEF3C7" : "#F3F4F6", color: dias >= 3 ? "#DC2626" : dias >= 2 ? "#D97706" : "#6B7280", padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>🕐 {dias}d</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: "#6B7280" }}>{f.descripcion}{f.proveedor ? ` · ${f.proveedor}` : ""}</div>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>{fmt(f.pedidoEspecial && f.costoReal != null ? f.costoReal : f.costoMercancia)}</div>
-                        {f.costoFlete > 0 && <div style={{ fontSize: 9, color: "#6B7280" }}>Flete: {fmt(f.costoFlete)}</div>}
-                      </div>
-                    </label>
-                  );
-                })}
+              <div style={{ marginBottom: 80 }}>
+                {renderZonaC("Otay", otayC, "#1E40AF", "#EFF6FF", "📍")}
+                {renderZonaC("Los Ángeles", laC, "#7C3AED", "#F5F3FF", "📍")}
+                {otraC.length  > 0 && renderZonaC("Otra ubicación", otraC, "#6B7280", "#F9FAFB", "📍")}
+                {sinUbC.length > 0 && renderZonaC("Sin ubicación", sinUbC, "#9CA3AF", "#F9FAFB", "❓")}
               </div>
               {/* Sticky action bar */}
               <div style={{ position: "sticky", bottom: 16, background: "#1A2744", borderRadius: 12, padding: "14px 16px", boxShadow: "0 4px 20px rgba(0,0,0,.25)" }}>
