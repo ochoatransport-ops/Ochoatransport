@@ -684,6 +684,26 @@ const useApp = () => React.useContext(AppCtx);
 // This cache persists form data across remounts so users never lose what they typed.
 const _cache = {};
 const _modals = {};
+// Tracks which search inputs should be re-focused after component remount
+const _searchFocus = {}; // key -> bool
+
+// Hook: search input that survives component remounts
+function useSearchInput(key) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (_searchFocus[key] && ref.current) {
+      const el = ref.current;
+      el.focus();
+      const len = el.value.length;
+      try { el.setSelectionRange(len, len); } catch {}
+    }
+  });
+  return {
+    ref,
+    onFocus: () => { _searchFocus[key] = true; },
+    onBlur:  () => { _searchFocus[key] = false; },
+  };
+}
 const useModalState = (key, initial = false) => {
   const [val, setVal] = useState(() => _modals[key] ?? initial);
   const setter = useCallback((v) => {
@@ -2194,6 +2214,7 @@ export default function App() {
     const [editCell, setEditCell] = useState(null); // { id, field, val }
     const bTipo = bitPeriodoTipo; const setBTipo = setBitPeriodoTipo;
     const bOff  = bitPeriodoOffset; const setBOff  = setBitPeriodoOffset;
+    const bitSearch_si = useSearchInput("bitacora-search");
 
     // Mini period bar renderer (reused in ListView too)
     const MiniPeriodBar = ({ tipo, setTipo, off, setOff, label }) => (
@@ -2302,7 +2323,7 @@ export default function App() {
 
         {/* Filters */}
         <div style={{ display: "flex", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
-          <div style={{ position: "relative", flex: "1 1 140px" }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={bSearch} onChange={e => setBSearch(e.target.value)} placeholder="Folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
+          <div style={{ position: "relative", flex: "1 1 140px" }}><span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input ref={bitSearch_si.ref} value={bSearch} onChange={e => setBSearch(e.target.value)} onFocus={bitSearch_si.onFocus} onBlur={bitSearch_si.onBlur} placeholder="Folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 26, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} /></div>
           <select value={fProv} onChange={e => setFProv(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", background: "#FAFAFA" }}><option value="ALL">Proveedores</option>{provs.map(p => <option key={p} value={p}>{p}</option>)}</select>
           <select value={fCli} onChange={e => setFCli(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", background: "#FAFAFA" }}><option value="ALL">Clientes</option>{clis.map(c => <option key={c} value={c}>{c}</option>)}</select>
           {vends.length > 0 && <select value={fVend} onChange={e => setFVend(e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", background: "#FAFAFA" }}><option value="ALL">Vendedores</option>{vends.map(v => <option key={v} value={v}>{v}</option>)}</select>}
@@ -2441,6 +2462,7 @@ export default function App() {
   const Clientes = () => {
     const [exp, setExp] = useState(null);
     const [cSearch, setCSearch] = useState("");
+    const cSearch_si = useSearchInput("clientes-search");
     const [cFiltro, setCFiltro] = useState("ALL"); // ALL, pendiente, pagado, moroso
     const [cSort, setCSort] = useState("saldo_desc"); // nombre_asc, nombre_desc, saldo_desc, saldo_asc, monto_desc, monto_asc
     const [pagoCliente, setPagoCliente] = useState(null);
@@ -2605,7 +2627,7 @@ export default function App() {
         {/* Search bar — full width */}
         <div style={{ position: "relative", marginBottom: 12 }}>
           <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 18 }}><I.Search /></span>
-          <input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Buscar cliente o vendedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.style.borderColor = "#2563EB"} onBlur={e => e.target.style.borderColor = "#E5E7EB"} />
+          <input ref={cSearch_si.ref} value={cSearch} onChange={e => setCSearch(e.target.value)} onFocus={e => { cSearch_si.onFocus(); e.target.style.borderColor = "#2563EB"; }} onBlur={e => { cSearch_si.onBlur(); e.target.style.borderColor = "#E5E7EB"; }} placeholder="Buscar cliente o vendedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} />
           {cSearch && <button onClick={() => setCSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, fontFamily: "inherit" }}>✕</button>}
         </div>
 
@@ -3020,6 +3042,7 @@ export default function App() {
   const Proveedores = () => {
     const [exp, setExp] = useState(null);
     const [pSearch, setPSearch] = useState("");
+    const pSearch_si = useSearchInput("proveedores-search");
     const [pFiltro, setPFiltro] = useState("ALL");
     const [pSort, setPSort] = useState("deuda_desc");
     const [pagoProv, setPagoProv] = useState(null);
@@ -3118,7 +3141,7 @@ export default function App() {
         {/* Search bar — full width */}
         <div style={{ position: "relative", marginBottom: 12 }}>
           <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", fontSize: 18 }}><I.Search /></span>
-          <input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Buscar proveedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.style.borderColor = "#2563EB"} onBlur={e => e.target.style.borderColor = "#E5E7EB"} />
+          <input ref={pSearch_si.ref} value={pSearch} onChange={e => setPSearch(e.target.value)} onFocus={e => { pSearch_si.onFocus(); e.target.style.borderColor = "#2563EB"; }} onBlur={e => { pSearch_si.onBlur(); e.target.style.borderColor = "#E5E7EB"; }} placeholder="Buscar proveedor..." autoComplete="off" style={{ width: "100%", padding: "12px 40px 12px 44px", borderRadius: 10, border: "2px solid #E5E7EB", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }} />
           {pSearch && <button onClick={() => setPSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 16, fontFamily: "inherit" }}>✕</button>}
         </div>
         {/* Filters and Sort */}
@@ -3554,7 +3577,10 @@ export default function App() {
     const [vSearch, setVSearch] = useState("");
     const [vFiltro, setVFiltro] = useState("ALL");
     const [showSobreModal, setShowSobreModal] = useModalState("showSobreModal");
-    const [ventasTab, setVentasTab] = useState("fantasmas"); // "fantasmas" | "fletes"
+    const [ventasTab, setVentasTab] = useState("fantasmas"); // "fantasmas" | "fletes" | "historial"
+    const [histSearch, setHistSearch] = usePersistedForm("histSearch", "");
+    const vSearch_si = useSearchInput("ventas-search");
+    const histSearch_si = useSearchInput("ventas-hist-search");
 
     let pedidosNuevos = data.fantasmas.filter(f => f.estado === "PEDIDO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaCreacion) - new Date(a.fechaCreacion));
 
@@ -3723,7 +3749,7 @@ export default function App() {
         {ventasTab === "fantasmas" && <>
         <div style={{ position: "relative", marginBottom: 8 }}>
           <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
-          <input value={vSearch} onChange={e => setVSearch(e.target.value)} placeholder="Buscar folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+          <input ref={vSearch_si.ref} value={vSearch} onChange={e => setVSearch(e.target.value)} onFocus={vSearch_si.onFocus} onBlur={vSearch_si.onBlur} placeholder="Buscar folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
         </div>
         <div style={{ display: "flex", gap: 3, background: "#F3F4F6", borderRadius: 8, padding: 3, marginBottom: 12 }}>
           {[["ALL","📋 Todos",null,"#1A2744"],["sin_sobre","💵 Pendientes",sinSobre.length,"#DC2626"],["sobre_listo","📋 Sobre listo",sobreListo.length,"#2563EB"],["sobre_enviado","📨 Enviados",sobreEnviado.length,"#7C3AED"],["con_dinero","✅ En USA",conDineroV.length,"#059669"]].map(([k,l,n,c]) => (
@@ -3807,26 +3833,46 @@ export default function App() {
 
         {/* ── HISTORIAL TAB ─────────────────────────────────────── */}
         {ventasTab === "historial" && (() => {
-          const histAll = filterByDate(data.fantasmas, "fechaActualizacion")
+          // Filter by period using fechaCreacion (stable date that never changes)
+          let histAll = filterByDate(data.fantasmas, "fechaCreacion")
             .filter(f => f.estado !== "CERRADO")
-            .sort((a, b) => (b.fechaActualizacion || b.fechaCreacion || "").localeCompare(a.fechaActualizacion || a.fechaCreacion || ""));
+            .sort((a, b) => (b.fechaCreacion || "").localeCompare(a.fechaCreacion || ""));
+          // Apply search
+          if (histSearch) {
+            const s = histSearch.toLowerCase().trim();
+            const sNum = s.replace(/[^0-9]/g, "");
+            histAll = histAll.filter(f =>
+              f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) ||
+              (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s) ||
+              (sNum && f.id.includes(sNum))
+            );
+          }
+          // Group by fechaCreacion
           const byDay = {};
-          histAll.forEach(f => { const d = f.fechaActualizacion || f.fechaCreacion || "Sin fecha"; if (!byDay[d]) byDay[d] = []; byDay[d].push(f); });
+          histAll.forEach(f => { const d = f.fechaCreacion || "Sin fecha"; if (!byDay[d]) byDay[d] = []; byDay[d].push(f); });
           const days = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
-          if (histAll.length === 0) return (
-            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-              <p style={{ fontSize: 12 }}>No hay movimientos en este período.</p>
-            </div>
-          );
           const totalMercH = histAll.reduce((s, f) => s + f.costoMercancia, 0);
           return (
             <div>
+              {/* Search bar */}
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+                <input ref={histSearch_si.ref} value={histSearch} onChange={e => setHistSearch(e.target.value)}
+                  onFocus={histSearch_si.onFocus} onBlur={histSearch_si.onBlur}
+                  placeholder="Buscar folio, cliente, proveedor..." autoComplete="off"
+                  style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+                {histSearch && <button onClick={() => setHistSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14 }}>✕</button>}
+              </div>
               <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 10, display: "flex", gap: 12 }}>
                 <span>{histAll.length} pedidos</span>
                 <span>👻 {fmt(totalMercH)}</span>
               </div>
-              {days.map(day => {
+              {histAll.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                  <p style={{ fontSize: 12 }}>{histSearch ? "Sin resultados para esa búsqueda." : "No hay pedidos en este período."}</p>
+                </div>
+              ) : days.map(day => {
                 const items = byDay[day];
                 const dayTotal = items.reduce((s, f) => s + f.costoMercancia, 0);
                 const isToday = day === today();
@@ -4133,6 +4179,7 @@ export default function App() {
     const [selSobres, setSelSobres] = useState({});
     const [usaPendTab, setUsaPendTab] = useState("camino");
     const [usaSearch, setUsaSearch] = useState("");
+    const usaSearch_si = useSearchInput("bodegausa-search");
 
     const usaMatch = (f) => {
       if (!usaSearch.trim()) return true;
@@ -4883,7 +4930,7 @@ export default function App() {
         {/* Search bar — visible in all tabs */}
         <div style={{ position: "relative", marginBottom: 12 }}>
           <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF", pointerEvents: "none" }}>🔍</span>
-          <input value={usaSearch} onChange={e => setUsaSearch(e.target.value)} placeholder="Buscar cliente, folio, mercancía..." style={{ width: "100%", padding: "8px 12px 8px 32px", borderRadius: 8, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", outline: "none", background: "#FAFAFA", boxSizing: "border-box" }} />
+          <input ref={usaSearch_si.ref} value={usaSearch} onChange={e => setUsaSearch(e.target.value)} onFocus={usaSearch_si.onFocus} onBlur={usaSearch_si.onBlur} placeholder="Buscar cliente, folio, mercancía..." style={{ width: "100%", padding: "8px 12px 8px 32px", borderRadius: 8, border: "1px solid #D1D5DB", fontSize: 11, fontFamily: "inherit", outline: "none", background: "#FAFAFA", boxSizing: "border-box" }} />
           {usaSearch && <button onClick={() => setUsaSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14, lineHeight: 1 }}>✕</button>}
         </div>
         {tab === "pendientes" && <PendientesTab />}
@@ -4954,7 +5001,10 @@ export default function App() {
     // Recibir envíos from USA
     const RecibirTJ = () => {
       const [selected, setSelected] = useState({});
-      const porRecibir = data.fantasmas.filter(f => f.estado === "RECOLECTADO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+      const [rSearch, setRSearch] = useState("");
+      const rSearch_si = useSearchInput("recibirTJ-search");
+      let porRecibir = data.fantasmas.filter(f => f.estado === "RECOLECTADO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
+      if (rSearch) { const s = rSearch.toLowerCase().trim(); porRecibir = porRecibir.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s)); }
       const selCount = Object.keys(selected).filter(k => selected[k]).length;
 
       const confirmarRecibido = () => {
@@ -4979,7 +5029,12 @@ export default function App() {
         <div>
           <div style={{ marginBottom: 12 }}>
             <h2 style={{ margin: "0 0 2px", fontSize: 16, fontWeight: 700 }}>📥 Pedido Recibido</h2>
-            <div style={{ fontSize: 11, color: "#6B7280" }}>{porRecibir.length} pedido{porRecibir.length !== 1 ? "s" : ""} recolectados — pendientes de confirmar recepción</div>
+            <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>{porRecibir.length} pedido{porRecibir.length !== 1 ? "s" : ""} recolectados — pendientes de confirmar recepción</div>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+              <input ref={rSearch_si.ref} value={rSearch} onChange={e => setRSearch(e.target.value)} onFocus={rSearch_si.onFocus} onBlur={rSearch_si.onBlur} placeholder="Buscar folio, cliente, proveedor..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+              {rSearch && <button onClick={() => setRSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14 }}>✕</button>}
+            </div>
           </div>
           {porRecibir.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
@@ -5031,8 +5086,20 @@ export default function App() {
     // Entregados
     const EntregadosTJ = () => {
       const [selEnt, setSelEnt] = useState({});
-      const enBodega = data.fantasmas.filter(f => f.estado === "BODEGA_TJ").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
-      const entregados = data.fantasmas.filter(f => f.estado === "ENTREGADO").sort((a, b) => new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
+      const [bodegaSearch, setBodegaSearch] = useState("");
+      const [entSearch, setEntSearch] = useState("");
+      const bodegaSearch_si = useSearchInput("bodegaTJ-bodega-search");
+      const entSearch_si = useSearchInput("bodegaTJ-ent-search");
+
+      let enBodegaAll = data.fantasmas.filter(f => f.estado === "BODEGA_TJ").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
+      if (bodegaSearch) { const s = bodegaSearch.toLowerCase(); enBodegaAll = enBodegaAll.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s)); }
+      const enBodega = enBodegaAll;
+
+      // Entregados: filter by global period + search
+      let entregadosAll = filterByDate(data.fantasmas.filter(f => f.estado === "ENTREGADO"), "fechaActualizacion").sort((a, b) => new Date(b.fechaActualizacion) - new Date(a.fechaActualizacion));
+      if (entSearch) { const s = entSearch.toLowerCase(); entregadosAll = entregadosAll.filter(f => f.cliente.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.descripcion||"").toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s)); }
+      const entregados = entregadosAll;
+
       const selCount = Object.keys(selEnt).filter(k => selEnt[k]).length;
 
       const marcarEntregados = () => {
@@ -5053,14 +5120,21 @@ export default function App() {
         <div>
           {/* En bodega - pendientes de entregar */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div>
-                <h2 style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 700 }}>📦 En Bodega TJ — por entregar</h2>
-                <div style={{ fontSize: 11, color: "#6B7280" }}>{enBodega.length} pedido{enBodega.length !== 1 ? "s" : ""} esperando entrega al cliente</div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 700 }}>📦 En Bodega TJ — por entregar</h2>
+                  <div style={{ fontSize: 11, color: "#6B7280" }}>{enBodega.length} pedido{enBodega.length !== 1 ? "s" : ""} esperando entrega al cliente</div>
+                </div>
+                {enBodegaAll.length > 0 && (
+                  <button onClick={() => { const ns = {}; enBodega.forEach(f => ns[f.id] = true); setSelEnt(ns); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#2563EB", fontFamily: "inherit", textDecoration: "underline", flexShrink: 0 }}>Seleccionar todos</button>
+                )}
               </div>
-              {enBodega.length > 0 && (
-                <button onClick={() => { const ns = {}; enBodega.forEach(f => ns[f.id] = true); setSelEnt(ns); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#2563EB", fontFamily: "inherit", textDecoration: "underline" }}>Seleccionar todos</button>
-              )}
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+                <input ref={bodegaSearch_si.ref} value={bodegaSearch} onChange={e => setBodegaSearch(e.target.value)} onFocus={bodegaSearch_si.onFocus} onBlur={bodegaSearch_si.onBlur} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+                {bodegaSearch && <button onClick={() => setBodegaSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14 }}>✕</button>}
+              </div>
             </div>
 
             {enBodega.length === 0 ? (
@@ -5111,12 +5185,28 @@ export default function App() {
           </div>
 
           {/* Historial de entregados */}
-          {entregados.length > 0 && (
+          {(() => {
+            const totalEntAll = data.fantasmas.filter(f => f.estado === "ENTREGADO").length;
+            return (
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#059669", marginBottom: 8, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-                ✅ Entregados al cliente ({entregados.length})
+              <div style={{ paddingTop: 12, borderTop: "1px solid #E5E7EB", marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#059669" }}>
+                    ✅ Entregados al cliente ({entregados.length}{totalEntAll !== entregados.length ? ` de ${totalEntAll}` : ""})
+                  </div>
+                  {periodoTipo !== "global" && <span style={{ fontSize: 10, color: "#6B7280", background: "#EFF6FF", padding: "2px 8px", borderRadius: 4 }}>📅 {periodoLabel()}</span>}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
+                  <input ref={entSearch_si.ref} value={entSearch} onChange={e => setEntSearch(e.target.value)} onFocus={entSearch_si.onFocus} onBlur={entSearch_si.onBlur} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+                  {entSearch && <button onClick={() => setEntSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 14 }}>✕</button>}
+                </div>
               </div>
-              {entregados.map(f => {
+              {entregados.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 20, color: "#9CA3AF", fontSize: 12 }}>
+                  {entSearch ? "Sin resultados para esa búsqueda." : "Sin entregas en este período."}
+                </div>
+              ) : entregados.map(f => {
                 const pagado = f.clientePago && (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido));
                 const dias = !pagado ? diasHabiles(f.fechaEntrega || f.fechaActualizacion) : 0;
                 const autoUrgente = !pagado && dias >= 3;
@@ -5138,7 +5228,8 @@ export default function App() {
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </div>
       );
     };
@@ -5402,6 +5493,7 @@ export default function App() {
     const FlujoEfectivo = () => {
       const subTab = flujoSubTabApp; const setSubTab = setFlujoSubTabApp;
       const showGasto = showGastoApp; const setShowGasto = setShowGastoApp;
+      const cobSearch_si = useSearchInput("flujo-cobsearch");
       const [gastoForm, setGastoForm] = usePersistedForm("gastoFormTJ", { concepto: "", monto: "", categoria: "OPERACIÓN", fecha: today(), nota: "" });
       const [cobForm, setCobForm] = usePersistedForm("cobForm", { tipo: "mercancia", pedidoId: "", monto: "", fecha: today(), nota: "" });
       const showCobro = showCobroApp; const setShowCobro = setShowCobroApp;
@@ -5439,6 +5531,7 @@ export default function App() {
 
     const PagosList = () => {
       const [busqueda, setBusqueda] = useState("");
+      const busqueda_si = useSearchInput("pagoslist-search");
       const [filtro, setFiltro] = useState("todos");
       const [sk, setSk] = useState("id");
       const [sd, setSd] = useState(1);
@@ -5563,7 +5656,7 @@ export default function App() {
           <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: "1 1 200px" }}>
               <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span>
-              <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
+              <input ref={busqueda_si.ref} value={busqueda} onChange={e => setBusqueda(e.target.value)} onFocus={busqueda_si.onFocus} onBlur={busqueda_si.onBlur} placeholder="Buscar folio, cliente, descripción..." autoComplete="off" style={{ width: "100%", padding: "7px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />
             </div>
             <div style={{ display: "flex", gap: 2, background: "#F3F4F6", borderRadius: 6, padding: 2 }}>
               {[["todos","Todos"],["pendientes",`Pendientes (${pendCount})`],["pagados",`Pagados (${pagCount})`]].map(([k,l]) => (
@@ -5866,7 +5959,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
               )}
               {showCobro && (
                 <Modal title={`💰 Registrar pago de ${cobForm.tipo === "mercancia" ? "mercancía (fantasma)" : "flete"}`} onClose={() => { setShowCobro(false) }} w={500}>
-                  <Fld label="Buscar pedido"><div style={{ position: "relative" }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input value={cobSearch} onChange={e => setCobSearch(e.target.value)} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />{cobSearch && <button onClick={() => setCobSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 12 }}>✕</button>}</div></Fld>
+                  <Fld label="Buscar pedido"><div style={{ position: "relative" }}><span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#9CA3AF" }}><I.Search /></span><input ref={cobSearch_si.ref} value={cobSearch} onChange={e => setCobSearch(e.target.value)} onFocus={cobSearch_si.onFocus} onBlur={cobSearch_si.onBlur} placeholder="Folio, cliente..." autoComplete="off" style={{ width: "100%", padding: "8px 10px", paddingLeft: 28, borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FAFAFA" }} />{cobSearch && <button onClick={() => setCobSearch("")} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 12 }}>✕</button>}</div></Fld>
                   <div style={{ maxHeight: 200, overflow: "auto", marginBottom: 8, border: "1px solid #E5E7EB", borderRadius: 8 }}>{(() => { const isMerc = cobForm.tipo === "mercancia"; const pf = data.fantasmas.filter(f => { if (f.estado === "CERRADO") return false; if (isMerc && f.clientePago) return false; if (!isMerc && (f.fletePagado || (!f.costoFlete && !f.fleteDesconocido))) return false; if (cobSearch) { const s = cobSearch.toLowerCase(); return f.cliente.toLowerCase().includes(s) || f.descripcion.toLowerCase().includes(s) || f.id.toLowerCase().includes(s) || (f.proveedor||"").toLowerCase().includes(s); } return true; }); if (pf.length === 0) return <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 11 }}>No hay pedidos pendientes</div>; return pf.map(f => { const d = isMerc ? (f.costoMercancia-(f.abonoMercancia||0)) : (f.costoFlete-(f.abonoFlete||0)); const sel = cobForm.pedidoId === f.id; return <div key={f.id} onClick={() => { setCobForm({...cobForm, pedidoId: f.id, monto: String(d)}); setCobSearch(""); }} style={{ padding: "8px 12px", cursor: "pointer", background: sel ? "#EFF6FF" : "#fff", borderBottom: "1px solid #F3F4F6", borderLeft: sel ? "3px solid #2563EB" : "3px solid transparent" }} onMouseEnter={e => { if (!sel) e.currentTarget.style.background="#FAFBFC"; }} onMouseLeave={e => { if (!sel) e.currentTarget.style.background="#fff"; }}><div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}><span style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "monospace", fontWeight: 700 }}>{f.id}</span><strong style={{ fontSize: 11 }}>{f.cliente}</strong>{sel && <span style={{ fontSize: 8, background: "#2563EB", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>✓</span>}<span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 11, color: isMerc ? "#DC2626" : "#2563EB" }}>Debe: {fmt(d)}</span></div><div style={{ fontSize: 10, color: "#6B7280" }}>{f.descripcion} · {f.cantBultos||1} {f.empaque||"bulto"}{(f.cantBultos||1)>1?"s":""}</div></div>; }); })()}</div>
                   {cobForm.pedidoId && (() => { const pf = data.fantasmas.find(x => x.id === cobForm.pedidoId); if (!pf) return null; const isMerc = cobForm.tipo === "mercancia"; const tot = isMerc ? pf.costoMercancia : (pf.costoFlete||0); const ab = isMerc ? (pf.abonoMercancia||0) : (pf.abonoFlete||0); return <div style={{ background: "#F9FAFB", borderRadius: 6, padding: "8px 12px", marginBottom: 8, border: "1px solid #E5E7EB", fontSize: 11 }}><strong>{pf.id}</strong> · {pf.cliente} · Total: {fmt(tot)} · Abonado: {fmt(ab)} · <strong style={{ color: "#DC2626" }}>Debe: {fmt(tot-ab)}</strong></div>; })()}
                   <div style={{ display: "flex", gap: 8 }}><Fld label="🇺🇸 Monto en USD"><Inp type="number" value={cobForm.monto} onChange={e => setCobForm({...cobForm, monto: e.target.value})} placeholder="0.00" /></Fld><Fld label="Fecha"><Inp type="date" value={cobForm.fecha} onChange={e => setCobForm({...cobForm, fecha: e.target.value})} /></Fld></div>
@@ -6986,6 +7079,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
   // ============ CUENTAS ============
   const CuentasPage = () => {
     const [cuentasTab, setCuentasTab] = useState("cobrar");
+    const cobrarSearch_si = useSearchInput("cuentas-cobrar-search");
     const [fondoModal, setFondoModal] = useState(null); // { key, label, color, tipo: "agregar"|"retirar" }
     const [fondoMonto, setFondoMonto] = useState("");
     const [cxpExpand, setCxpExpand] = useState(null);
@@ -7054,7 +7148,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
               </div>
             </div>
             {/* Search bar */}
-            <input value={cobrarSearch} onChange={e => setCobrarSearch(e.target.value)} placeholder="🔍 Buscar por cliente..." style={{ width: "100%", padding: "7px 12px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
+            <input ref={cobrarSearch_si.ref} value={cobrarSearch} onChange={e => setCobrarSearch(e.target.value)} onFocus={cobrarSearch_si.onFocus} onBlur={cobrarSearch_si.onBlur} placeholder="🔍 Buscar por cliente..." style={{ width: "100%", padding: "7px 12px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
             {/* Fletes pendientes */}
             {(() => { const flFilt = cobrarSearch ? porCobrarFlete.filter(f => f.cliente.toLowerCase().includes(cobrarSearch.toLowerCase())) : porCobrarFlete; return (<>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>🚛 Fletes pendientes ({flFilt.length})</div>
@@ -7143,7 +7237,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
                         <div style={{ fontSize: 9, color: "#6B7280" }}>{empPendientes.length} pendientes</div>
                       </div>
                     </div>
-                    <input value={cobrarSearch} onChange={e => setCobrarSearch(e.target.value)} placeholder="🔍 Buscar empleado..." style={{ width: "100%", padding: "7px 12px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
+                    <input ref={cobrarSearch_si.ref} value={cobrarSearch} onChange={e => setCobrarSearch(e.target.value)} onFocus={cobrarSearch_si.onFocus} onBlur={cobrarSearch_si.onBlur} placeholder="🔍 Buscar empleado..." style={{ width: "100%", padding: "7px 12px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 11, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
                     <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cuentas ({empFiltered.length})</div>
                     {empFiltered.length === 0 && <div style={{ textAlign: "center", padding: 30, color: "#9CA3AF", fontSize: 11 }}>No hay cuentas de empleados aún. Pásame los datos y las agrego.</div>}
                     {empFiltered.map(c => {
