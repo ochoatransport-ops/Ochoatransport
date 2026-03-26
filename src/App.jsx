@@ -1024,15 +1024,17 @@ export default function App() {
       // ─────────────────────────────────────────────────────────────
       const _fantasmasBeforeSync = d.fantasmas; // snapshot before corrections
       d.fantasmas = d.fantasmas.map(f => {
-        // soloRecoger without real flete cost always stays NO_APLICA
-        if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
-          if (f.dineroStatus !== "NO_APLICA") return { ...f, dineroStatus: "NO_APLICA" };
-          return f;
-        }
-        // Repair: any status that ISN'T already past DINERO_CAMINO, but egreso exists → race condition
+        // Repair first — if sobre was sent (egreso exists in gastosAdmin), respect that regardless of soloRecoger
         if (_sobreEgresoIds.has(f.id) && !_ALREADY_IN_USA.has(f.dineroStatus) && f.dineroStatus !== "DINERO_CAMINO") {
           console.log(`[repair] ${f.id} corrected ${f.dineroStatus} → DINERO_CAMINO (sobre egreso found in gastosAdmin)`);
           return { ...f, dineroStatus: "DINERO_CAMINO", adelantoAdmin: true };
+        }
+        // soloRecoger without real flete cost stays NO_APLICA — UNLESS it's already in transit or received
+        if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
+          if (!["DINERO_CAMINO","DINERO_USA","COLCHON_USADO","COLCHON_REPUESTO"].includes(f.dineroStatus)) {
+            if (f.dineroStatus !== "NO_APLICA") return { ...f, dineroStatus: "NO_APLICA" };
+          }
+          return f;
         }
         // Never touch statuses that represent money in transit or already received
         if (PRESERVE_STATUS.includes(f.dineroStatus)) return f;
@@ -1233,8 +1235,11 @@ export default function App() {
   };
   // Helper: determine dineroStatus based on payment state
   const calcDineroStatus = (f) => {
-    // soloRecoger with no real flete → always NO_APLICA
-    if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) return "NO_APLICA";
+    // soloRecoger with no real flete — but only if not already in transit/received
+    if (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0)) {
+      if (["DINERO_CAMINO","DINERO_USA","COLCHON_USADO","COLCHON_REPUESTO"].includes(f.dineroStatus)) return null; // preserve
+      return "NO_APLICA";
+    }
     const mercPagado = f.clientePago;
     const fleteOk = f.fletePagado || (f.soloRecoger && !f.fleteDesconocido && !(f.costoFlete > 0));
     if (mercPagado && fleteOk) return "TODO_PAGADO";
@@ -3583,6 +3588,14 @@ export default function App() {
     const vSearch_si = useSearchInput("ventas-search");
     const histSearch_si = useSearchInput("ventas-hist-search");
 
+    // Set of pedido IDs that have a SOBRE USA egreso in gastosAdmin (already sent)
+    const _sobreEgresosSet = new Set(
+      (data.gastosAdmin || [])
+        .filter(m => (m.concepto || "").startsWith("SOBRE USA:") && m.tipoMov === "egreso")
+        .map(m => { const match = (m.concepto || "").match(/F-\d+/); return match ? match[0] : null; })
+        .filter(Boolean)
+    );
+
     let pedidosNuevos = data.fantasmas.filter(f => f.estado === "PEDIDO").sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || new Date(b.fechaCreacion) - new Date(a.fechaCreacion));
 
     // Search
@@ -3600,7 +3613,8 @@ export default function App() {
     // Groups — pedidos pagados por transferencia NO se pueden seleccionar para sobre desde aquí
     const pagoConTransferencia = (f) => (data.transferencias || []).some(t => t.pedidoId === f.id && t.tipo === "fantasma" && t.confirmada === true);
     // sinSobre = always visible — sin fondos + pagados por cliente (tienen dinero, pueden enviar sobre)
-    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO" || f.dineroStatus === "NO_APLICA");
+    // soloRecoger with NO_APLICA are included here only if NOT already sent (DINERO_CAMINO/DINERO_USA)
+    const sinSobre = pedidosNuevos.filter(f => !f.dineroStatus || f.dineroStatus === "SIN_FONDOS" || f.dineroStatus === "FANTASMA_PAGADO" || f.dineroStatus === "FLETE_PAGADO" || f.dineroStatus === "TODO_PAGADO" || (f.dineroStatus === "NO_APLICA" && !_sobreEgresosSet.has(f.id)));
     const sobreListo = pedidosNuevos.filter(f => f.dineroStatus === "SOBRE_LISTO");
     const transPendientes = pedidosNuevos.filter(f => f.dineroStatus === "TRANS_PENDIENTE");
     // These two are period-filtered
@@ -6222,7 +6236,12 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
     const registrar = () => {
       const montoUSD = parseFloat(movForm.montoUSD) || 0;
       const montoMXN = parseFloat(movForm.montoMXN) || 0;
-      if (!movForm.concepto || (montoUSD <= 0 && montoMXN <= 0)) return;
+      const isRecibir = movForm.tipo === "recibir";
+      // For recibir, monto comes from pedido selector — use it as USD if no manual amount
+      const montoRecibir = parseFloat(movForm.monto) || 0;
+      const effectiveUSD = isRecibir && montoUSD <= 0 && montoMXN <= 0 ? montoRecibir : montoUSD;
+      const effectiveMXN = isRecibir && montoUSD <= 0 && montoMXN <= 0 ? 0 : montoMXN;
+      if (!movForm.concepto || (effectiveUSD <= 0 && effectiveMXN <= 0)) return;
 
       // Transfer to fondo
       if (movForm.tipo === "a_fondo" && movForm.fondoKey) {
@@ -6241,7 +6260,6 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       }
 
       const isEnvio = movForm.tipo === "envio";
-      const isRecibir = movForm.tipo === "recibir";
       let tipoMov = movForm.tipo;
       if (isEnvio) tipoMov = "egreso";
       if (isRecibir) tipoMov = "ingreso";
@@ -6250,10 +6268,10 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       const g = {
         id: Date.now(),
         concepto: movForm.concepto.toUpperCase(),
-        monto: montoUSD > 0 ? montoUSD : montoMXN,
-        moneda: montoUSD > 0 ? "USD" : "MXN",
-        montoUSD: montoUSD || 0,
-        montoMXN: montoMXN || 0,
+        monto: effectiveUSD > 0 ? effectiveUSD : effectiveMXN,
+        moneda: effectiveUSD > 0 ? "USD" : "MXN",
+        montoUSD: effectiveUSD || 0,
+        montoMXN: effectiveMXN || 0,
         destino: isEnvio ? movForm.destino : "ADMIN",
         origen: isRecibir ? movForm.destino : null,
         fecha: movForm.fecha,
@@ -6263,17 +6281,17 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
       let nd = { ...data, gastosAdmin: [...(data.gastosAdmin || []), g] };
 
       if (isEnvio) {
-        const ingBodega = { id: Date.now() + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD > 0 ? montoUSD : montoMXN, moneda: montoUSD > 0 ? "USD" : "MXN", montoUSD: montoUSD || 0, montoMXN: montoMXN || 0, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
+        const ingBodega = { id: Date.now() + 1, concepto: `FONDO ADMIN: ${movForm.concepto.toUpperCase()}`, monto: effectiveUSD > 0 ? effectiveUSD : effectiveMXN, moneda: effectiveUSD > 0 ? "USD" : "MXN", montoUSD: effectiveUSD || 0, montoMXN: effectiveMXN || 0, categoria: "FONDO DUEÑOS", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "ingreso" };
         if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), ingBodega];
         else nd.gastosBodega = [...(nd.gastosBodega || []), ingBodega];
       }
       if (isRecibir) {
-        const egrBodega = { id: Date.now() + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: montoUSD > 0 ? montoUSD : montoMXN, moneda: montoUSD > 0 ? "USD" : "MXN", montoUSD: montoUSD || 0, montoMXN: montoMXN || 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
+        const egrBodega = { id: Date.now() + 2, concepto: `ENTREGA A ADMIN: ${movForm.concepto.toUpperCase()}`, monto: effectiveUSD > 0 ? effectiveUSD : effectiveMXN, moneda: effectiveUSD > 0 ? "USD" : "MXN", montoUSD: effectiveUSD || 0, montoMXN: effectiveMXN || 0, categoria: "ENTREGA ADMIN", fecha: movForm.fecha, nota: movForm.nota, tipoMov: "gasto" };
         if (movForm.destino === "BODEGA_USA") nd.gastosUSA = [...(nd.gastosUSA || []), egrBodega];
         else nd.gastosBodega = [...(nd.gastosBodega || []), egrBodega];
         const pedRec = movForm.pedidosRec || {};
-        const monto = montoUSD > 0 ? montoUSD : montoMXN;
-        const moneda = montoUSD > 0 ? "USD" : "MXN";
+        const monto = effectiveUSD > 0 ? effectiveUSD : effectiveMXN;
+        const moneda = effectiveUSD > 0 ? "USD" : "MXN";
         Object.keys(pedRec).filter(k => pedRec[k]).forEach(fId => {
           const tipo = pedRec[fId];
           nd.fantasmas = nd.fantasmas.map(f => f.id !== fId ? f : { ...f, [tipo === "flete" ? "fleteEntregadoAdmin" : "fantasmaEntregadoAdmin"]: true, fechaActualizacion: today(), historial: [...(f.historial || []), { fecha: today(), accion: `📥 ${tipo === "flete" ? "Flete" : "Fantasma"} entregado a Admin (${moneda === "MXN" ? fmtMXN(monto) + " MXN" : fmt(monto) + " USD"})`, quien: role }] });
@@ -6557,7 +6575,7 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
             <Fld label="Nota"><Inp value={movForm.nota} onChange={e => setMovForm({ ...movForm, nota: e.target.value })} placeholder="Detalle..." /></Fld>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #E5E7EB" }}>
               <Btn v="secondary" onClick={() => { setShowMov(false) }}>Cancelar</Btn>
-              <Btn disabled={!movForm.concepto || !(parseFloat(movForm.monto) > 0) || (movForm.tipo === "a_fondo" && !movForm.fondoKey)} onClick={registrar} style={{ background: movForm.tipo === "ingreso" ? "#059669" : movForm.tipo === "envio" ? "#2563EB" : movForm.tipo === "recibir" ? "#7C3AED" : movForm.tipo === "a_fondo" ? "#D97706" : "#DC2626" }}>{movForm.tipo === "ingreso" ? "💰 Registrar ingreso" : movForm.tipo === "envio" ? "📤 Enviar" : movForm.tipo === "recibir" ? "📥 Recibir" : movForm.tipo === "a_fondo" ? "🏦 Transferir a fondo" : "💸 Registrar gasto"}</Btn>
+              <Btn disabled={!movForm.concepto || (movForm.tipo === "recibir" ? !(parseFloat(movForm.monto) > 0) : !(parseFloat(movForm.montoUSD) > 0) && !(parseFloat(movForm.montoMXN) > 0)) || (movForm.tipo === "a_fondo" && !movForm.fondoKey)} onClick={registrar} style={{ background: movForm.tipo === "ingreso" ? "#059669" : movForm.tipo === "envio" ? "#2563EB" : movForm.tipo === "recibir" ? "#7C3AED" : movForm.tipo === "a_fondo" ? "#D97706" : "#DC2626" }}>{movForm.tipo === "ingreso" ? "💰 Registrar ingreso" : movForm.tipo === "envio" ? "📤 Enviar" : movForm.tipo === "recibir" ? "📥 Recibir" : movForm.tipo === "a_fondo" ? "🏦 Transferir a fondo" : "💸 Registrar gasto"}</Btn>
             </div></>}
           </Modal>
         )}
@@ -8091,4 +8109,3 @@ ${m.cliente} — ${m.concepto} — ${fmt(m.monto)}`)) return; const f = data.fan
     </AppCtx.Provider>
   );
 }
-
